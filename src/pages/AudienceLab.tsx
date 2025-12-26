@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -6,8 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from '@tremor/react';
-import { Search, Sparkles, CheckCircle, Copy, Database } from 'lucide-react';
+import { Search, Sparkles, CheckCircle, Copy, Database, AlertCircle, Settings } from 'lucide-react';
 import { searchFacebookInterests } from '@/lib/interestService';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 interface InterestResult {
   id: string;
@@ -16,18 +19,100 @@ interface InterestResult {
   path?: string[];
 }
 
+interface ApiCredentials {
+  facebook?: string;
+  groq?: string;
+  gemini?: string;
+}
+
 export default function AudienceLab() {
-  const [token, setToken] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<InterestResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [credentials, setCredentials] = useState<ApiCredentials>({});
+  const [isConfigured, setIsConfigured] = useState(false);
+  const [loadingCredentials, setLoadingCredentials] = useState(true);
+
+  useEffect(() => {
+    fetchCredentials();
+  }, []);
+
+  const fetchCredentials = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('config_tokens')
+        .select('provider, access_token')
+        .in('provider', ['facebook', 'groq', 'gemini']);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const creds: ApiCredentials = {};
+        data.forEach((row) => {
+          if (row.provider === 'facebook') creds.facebook = row.access_token;
+          if (row.provider === 'groq') creds.groq = row.access_token;
+          if (row.provider === 'gemini') creds.gemini = row.access_token;
+        });
+        setCredentials(creds);
+        // Consider configured if at least Facebook + one AI service is available
+        setIsConfigured(!!creds.facebook && (!!creds.groq || !!creds.gemini));
+      }
+    } catch (error) {
+      console.error('Error fetching credentials:', error);
+    } finally {
+      setLoadingCredentials(false);
+    }
+  };
 
   const handleSearch = async () => {
-    if (!token) return alert("Please enter Access Token");
+    if (!credentials.facebook) {
+      toast({
+        title: "Facebook Token Missing",
+        description: "Please configure Facebook access in Data Management.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!query.trim()) {
+      toast({
+        title: "Search Query Required",
+        description: "Please enter a search term.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
-    const data = await searchFacebookInterests(query, token);
-    setResults(data);
-    setLoading(false);
+    try {
+      const data = await searchFacebookInterests(query, credentials.facebook);
+      setResults(data);
+    } catch (error) {
+      console.error('Search error:', error);
+      toast({
+        title: "Search Failed",
+        description: "Failed to search Facebook interests. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBrainstorm = () => {
+    if (!credentials.groq && !credentials.gemini) {
+      toast({
+        title: "AI Service Not Configured",
+        description: "Please configure Groq or Gemini API keys in Data Management.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // AI brainstorm logic would go here
+    toast({
+      title: "AI Brainstorm",
+      description: "AI brainstorming feature coming soon!",
+    });
   };
 
   return (
@@ -35,36 +120,56 @@ export default function AudienceLab() {
       <div className="space-y-6">
         {/* 1. Control Panel */}
         <Card className="p-6">
+          {/* Status Indicator */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-foreground">Audience Research</h2>
+            {loadingCredentials ? (
+              <Badge variant="outline" className="text-muted-foreground">
+                Loading...
+              </Badge>
+            ) : isConfigured ? (
+              <Badge variant="outline" className="text-green-600 border-green-600">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                System Connected (Meta + AI)
+              </Badge>
+            ) : (
+              <Link to="/data-management">
+                <Badge variant="outline" className="text-destructive border-destructive cursor-pointer hover:bg-destructive/10">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  Configuration Missing
+                  <Settings className="w-3 h-3 ml-1" />
+                </Badge>
+              </Link>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground mb-2 block">Facebook Access Token</label>
-              <Input
-                type="password"
-                placeholder="Paste your token here..."
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-              />
-            </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Product Context (For AI)</label>
               <Input placeholder="e.g., Luxury Condo for Investment" />
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="flex-1 min-w-[200px]">
+            <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Search Interest</label>
               <Input
                 placeholder="e.g., Golf, Property, Retirement..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               />
             </div>
-            <Button onClick={handleSearch} disabled={loading}>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={handleSearch} disabled={loading || !credentials.facebook}>
               <Search className="w-4 h-4 mr-2" />
               {loading ? 'Searching...' : 'Search FB'}
             </Button>
-            <Button variant="default" className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 gap-2">
+            <Button 
+              variant="default" 
+              className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 gap-2"
+              onClick={handleBrainstorm}
+              disabled={!credentials.groq && !credentials.gemini}
+            >
               <Sparkles className="w-4 h-4 animate-pulse" />
               Brainstorm with AI
             </Button>
