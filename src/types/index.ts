@@ -36,9 +36,13 @@ export interface OverviewKpiData {
 export interface PerformanceRow {
   product: string;
   category: ProductCategory;
-  target: number;
-  actual: number; // Sent Leads
+  businessTarget: number; // Partner/TL target from business
+  expectedConvRate: number; // Expected Sent -> TL conversion rate
+  targetSent: number; // Calculated: businessTarget / expectedConvRate
+  actualSent: number; // Sent Leads (Primary metric)
   percentAchieved: number;
+  partnerLeads: number; // TL Leads (Shadow metric)
+  convRate: number; // (Partner Leads / Sent Leads) * 100
   runRateStatus: 'on-track' | 'at-risk' | 'behind';
 }
 
