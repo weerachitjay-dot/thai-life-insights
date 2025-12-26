@@ -1,14 +1,18 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   Database, RefreshCcw, Settings, 
-  CheckCircle, XCircle, Clock, LogOut, Upload 
+  CheckCircle, XCircle, Clock, LogOut, Upload, Cpu, Save
 } from 'lucide-react';
 import { FacebookConnect } from '@/components/admin/FacebookConnect';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 const dataConnections = [
   { 
@@ -23,23 +27,85 @@ const dataConnections = [
     lastSync: 'Never',
     records: '-'
   },
-  { 
-    name: 'Antigravity API', 
-    status: 'disconnected', 
-    lastSync: 'N/A',
-    records: '-'
-  },
 ];
 
 export default function DataManagement() {
   const navigate = useNavigate();
+  const [groqKey, setGroqKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasStoredKeys, setHasStoredKeys] = useState(false);
 
   useEffect(() => {
     const isAuth = localStorage.getItem('isAdminAuthenticated');
     if (!isAuth) {
       navigate('/admin-login');
     }
+    fetchExistingKeys();
   }, [navigate]);
+
+  const fetchExistingKeys = async () => {
+    const { data } = await supabase
+      .from('config_tokens')
+      .select('provider, access_token')
+      .in('provider', ['groq', 'gemini']);
+
+    if (data && data.length > 0) {
+      setHasStoredKeys(true);
+      data.forEach((row) => {
+        if (row.provider === 'groq') setGroqKey(row.access_token);
+        if (row.provider === 'gemini') setGeminiKey(row.access_token);
+      });
+    }
+  };
+
+  const handleSaveKeys = async () => {
+    setIsSaving(true);
+    try {
+      const updates = [];
+      
+      if (groqKey) {
+        updates.push({
+          provider: 'groq',
+          access_token: groqKey,
+          token_type: 'api_key',
+          updated_at: new Date().toISOString()
+        });
+      }
+      
+      if (geminiKey) {
+        updates.push({
+          provider: 'gemini',
+          access_token: geminiKey,
+          token_type: 'api_key',
+          updated_at: new Date().toISOString()
+        });
+      }
+
+      if (updates.length > 0) {
+        const { error } = await supabase
+          .from('config_tokens')
+          .upsert(updates, { onConflict: 'provider' });
+
+        if (error) throw error;
+        
+        setHasStoredKeys(true);
+        toast({
+          title: "AI Keys Updated",
+          description: "Your API keys have been saved successfully.",
+        });
+      }
+    } catch (error) {
+      console.error('Error saving keys:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save API keys. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('isAdminAuthenticated');
@@ -123,6 +189,53 @@ export default function DataManagement() {
         {/* Facebook Connect */}
         <FacebookConnect />
 
+        {/* AI Service Configuration */}
+        <Card className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
+              <Cpu className="w-5 h-5 text-purple-500" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-foreground">AI Service Configuration</h2>
+              <p className="text-sm text-muted-foreground">Configure API keys for AI-powered features</p>
+            </div>
+            {hasStoredKeys && (
+              <Badge variant="outline" className="text-green-600 border-green-600">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Configured
+              </Badge>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="space-y-2">
+              <Label htmlFor="groq-key">Groq API Key</Label>
+              <Input
+                id="groq-key"
+                type="password"
+                placeholder="gsk_..."
+                value={groqKey}
+                onChange={(e) => setGroqKey(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gemini-key">Gemini API Key</Label>
+              <Input
+                id="gemini-key"
+                type="password"
+                placeholder="AIza..."
+                value={geminiKey}
+                onChange={(e) => setGeminiKey(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Button onClick={handleSaveKeys} disabled={isSaving} className="gap-2">
+            <Save className="w-4 h-4" />
+            {isSaving ? 'Saving...' : 'Save Keys'}
+          </Button>
+        </Card>
+
         {/* Other Connections Table */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
@@ -168,3 +281,4 @@ export default function DataManagement() {
     </DashboardLayout>
   );
 }
+
