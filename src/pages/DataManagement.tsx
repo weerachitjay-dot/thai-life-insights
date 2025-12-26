@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
   Database, RefreshCcw, Settings, 
-  CheckCircle, XCircle, Clock, LogOut 
+  CheckCircle, XCircle, Clock, LogOut, Upload 
 } from 'lucide-react';
 
 const dataConnections = [
@@ -129,10 +129,16 @@ export default function DataManagement() {
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-foreground">Data Connections</h2>
-            <Button variant="outline" size="sm" className="gap-2">
-              <RefreshCcw className="w-4 h-4" />
-              Sync All
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Upload className="w-4 h-4" />
+                Upload CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2">
+                <RefreshCcw className="w-4 h-4" />
+                Sync All
+              </Button>
+            </div>
           </div>
           
           <div className="space-y-3">

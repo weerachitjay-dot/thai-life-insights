@@ -162,7 +162,11 @@ export default function ProductMasterPage() {
                         {formatCurrency(row.revenue)}
                       </TableCell>
                       <TableCell className="text-center font-mono text-sm font-bold bg-lead-tl/5">
-                        <span className={row.roi >= 5 ? 'text-status-scale' : row.roi >= 3 ? 'text-status-hold' : 'text-status-risk'}>
+                        <span className={
+                          row.roi < 1 ? 'text-status-kill' : 
+                          row.roi >= 3 ? 'text-status-scale' : 
+                          'text-status-hold'
+                        }>
                           {row.roi.toFixed(2)}x
                         </span>
                       </TableCell>

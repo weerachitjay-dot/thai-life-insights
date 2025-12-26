@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -10,7 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Users, DollarSign, TrendingUp, Target } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Users, DollarSign, TrendingUp, Target, ArrowUpDown, Info } from 'lucide-react';
 import { PerformanceRow } from '@/types';
 import { formatCurrency, formatNumber } from '@/lib/campaignParser';
 import { useFilter } from '@/contexts/FilterContext';
@@ -25,14 +26,44 @@ const allPerformanceData: PerformanceRow[] = [
   { product: 'HEALTH-CRITICAL-CARE', category: 'Health', target: 500, actual: 370, percentAchieved: 74.0, runRateStatus: 'at-risk' },
 ];
 
+type SortKey = 'product' | 'target' | 'actual' | 'percentAchieved' | 'runRateStatus';
+type SortOrder = 'asc' | 'desc';
+
 export default function OverviewPage() {
   const { product } = useFilter();
+  const [sortKey, setSortKey] = useState<SortKey>('runRateStatus');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   // Filter data based on selected product
-  const performanceData = useMemo(() => {
+  const filteredData = useMemo(() => {
     if (product === 'all') return allPerformanceData;
     return allPerformanceData.filter(row => row.product === product);
   }, [product]);
+
+  // Sort data
+  const performanceData = useMemo(() => {
+    return [...filteredData].sort((a, b) => {
+      let comparison = 0;
+      if (sortKey === 'runRateStatus') {
+        const statusOrder = { 'behind': 0, 'at-risk': 1, 'on-track': 2 };
+        comparison = statusOrder[a.runRateStatus] - statusOrder[b.runRateStatus];
+      } else if (sortKey === 'product') {
+        comparison = a.product.localeCompare(b.product);
+      } else {
+        comparison = a[sortKey] - b[sortKey];
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredData, sortKey, sortOrder]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortOrder('desc');
+    }
+  };
 
   // Calculate KPIs based on filtered data
   const kpiData = useMemo(() => {
@@ -105,7 +136,19 @@ export default function OverviewPage() {
         <Card className="p-4 border-2 border-foreground bg-status-scale/10">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <p className="text-xs font-bold uppercase text-muted-foreground">Projection</p>
+              <div className="flex items-center gap-1">
+                <p className="text-xs font-bold uppercase text-muted-foreground">Projection</p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="w-3 h-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs max-w-[200px]">Calculated by: Current Sent Leads × (Days Remaining / Days Elapsed) + Current Sent Leads</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <p className="text-3xl font-bold text-foreground">{formatNumber(kpiData.projectedSentLeads)}</p>
             </div>
             <div className="p-2 bg-status-scale text-status-scale-foreground">
@@ -113,6 +156,7 @@ export default function OverviewPage() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground">Forecasted Sent Leads (EOM)</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">Based on current run rate</p>
         </Card>
       </div>
 
@@ -128,11 +172,51 @@ export default function OverviewPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-secondary hover:bg-secondary">
-              <TableHead className="font-bold">Product Name</TableHead>
-              <TableHead className="font-bold text-right">Target</TableHead>
-              <TableHead className="font-bold text-right">Actual (Sent)</TableHead>
-              <TableHead className="font-bold text-right">% Achieved</TableHead>
-              <TableHead className="font-bold text-center">Run Rate</TableHead>
+              <TableHead 
+                className="font-bold cursor-pointer hover:text-primary"
+                onClick={() => handleSort('product')}
+              >
+                <div className="flex items-center gap-1">
+                  Product Name
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </TableHead>
+              <TableHead 
+                className="font-bold text-right cursor-pointer hover:text-primary"
+                onClick={() => handleSort('target')}
+              >
+                <div className="flex items-center justify-end gap-1">
+                  Target
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </TableHead>
+              <TableHead 
+                className="font-bold text-right cursor-pointer hover:text-primary"
+                onClick={() => handleSort('actual')}
+              >
+                <div className="flex items-center justify-end gap-1">
+                  Actual (Sent)
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </TableHead>
+              <TableHead 
+                className="font-bold text-right cursor-pointer hover:text-primary"
+                onClick={() => handleSort('percentAchieved')}
+              >
+                <div className="flex items-center justify-end gap-1">
+                  % Achieved
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </TableHead>
+              <TableHead 
+                className="font-bold text-center cursor-pointer hover:text-primary"
+                onClick={() => handleSort('runRateStatus')}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  Run Rate
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

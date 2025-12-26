@@ -4,8 +4,9 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from '@tremor/react';
-import { Search, BrainCircuit, CheckCircle, Copy } from 'lucide-react';
+import { Search, Sparkles, CheckCircle, Copy, Database } from 'lucide-react';
 import { searchFacebookInterests } from '@/lib/interestService';
 
 interface InterestResult {
@@ -63,12 +64,31 @@ export default function AudienceLab() {
               <Search className="w-4 h-4 mr-2" />
               {loading ? 'Searching...' : 'Search FB'}
             </Button>
-            <Button variant="outline">
-              <BrainCircuit className="w-4 h-4 mr-2" />
+            <Button variant="default" className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 gap-2">
+              <Sparkles className="w-4 h-4 animate-pulse" />
               Brainstorm with AI
             </Button>
           </div>
         </Card>
+
+        {/* Results Table Placeholder (when no results) */}
+        {results.length === 0 && (
+          <Card className="p-8 border-2 border-dashed border-border">
+            <div className="flex flex-col items-center justify-center text-center">
+              <Database className="w-12 h-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-muted-foreground">Results Table</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Search for interests to see results here
+              </p>
+              <div className="mt-4 flex gap-2 text-xs text-muted-foreground">
+                <span className="px-2 py-1 bg-secondary rounded">Interest Name</span>
+                <span className="px-2 py-1 bg-secondary rounded">Audience Size</span>
+                <span className="px-2 py-1 bg-secondary rounded">Path</span>
+                <span className="px-2 py-1 bg-secondary rounded">Select</span>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* 2. Results Table (Tremor Style) */}
         {results.length > 0 && (
@@ -93,7 +113,10 @@ export default function AudienceLab() {
                 {results.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>
-                      <span className="font-medium">{item.name}</span>
+                      <div className="flex items-center gap-3">
+                        <Checkbox id={`interest-${item.id}`} />
+                        <span className="font-medium">{item.name}</span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {item.audience_size_upper_bound 

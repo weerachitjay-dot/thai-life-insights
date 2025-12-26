@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
-import { BarList, DonutChart, Title, Text, Bold, Flex } from '@tremor/react';
+import { DonutChart, Title, Text, Bold } from '@tremor/react';
 import { Users, Target, Zap } from 'lucide-react';
 import { useFilter } from '@/contexts/FilterContext';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
 // Mock Data: จำลองสิ่งที่ Antigravity จะดึงมาได้จาก Phase 2
 const allInterestPerformance = [
@@ -31,12 +32,17 @@ export default function AudiencePage() {
     return allInterestPerformance.filter(item => item.products.includes(product));
   }, [product]);
 
-  // Find best interest
+  // Find best interest and average CPL
   const bestInterest = useMemo(() => {
     if (interestPerformance.length === 0) return 'N/A';
     return interestPerformance.reduce((best, current) => 
       current.value < best.value ? current : best
     ).name;
+  }, [interestPerformance]);
+
+  const avgCpl = useMemo(() => {
+    if (interestPerformance.length === 0) return 0;
+    return interestPerformance.reduce((sum, item) => sum + item.value, 0) / interestPerformance.length;
   }, [interestPerformance]);
 
   return (
@@ -81,10 +87,10 @@ export default function AudiencePage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Interest Performance (Bar List) */}
+        {/* Interest Performance (Bar Chart with Reference Line) */}
         <Card className="p-6 border-2 border-foreground">
           <Title>Interest Targeting Performance</Title>
-          <Text>Comparing cost efficiency across targeting groups</Text>
+          <Text>CPL comparison vs. Average ({avgCpl.toFixed(0)} THB)</Text>
           
           {interestPerformance.length === 0 ? (
             <div className="mt-6 py-8 text-center text-muted-foreground">
@@ -92,16 +98,53 @@ export default function AudiencePage() {
             </div>
           ) : (
             <div className="mt-6">
-              <Flex className="mb-2">
-                <Text><Bold>Interest Name</Bold></Text>
-                <Text><Bold>CPL (THB)</Bold></Text>
-              </Flex>
-              <BarList
-                data={interestPerformance.map(item => ({ name: item.name, value: item.value }))}
-                className="mt-2"
-                color="blue"
-                valueFormatter={(number: number) => `฿${Intl.NumberFormat('us').format(number).toString()}`}
-              />
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart
+                  data={interestPerformance}
+                  layout="vertical"
+                  margin={{ top: 0, right: 30, left: 80, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                  <XAxis type="number" tickFormatter={(v) => `฿${v}`} />
+                  <YAxis 
+                    type="category" 
+                    dataKey="name" 
+                    tick={{ fontSize: 12 }}
+                    width={80}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => [`฿${value.toLocaleString()}`, 'CPL']}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '2px solid hsl(var(--foreground))',
+                    }}
+                  />
+                  <ReferenceLine 
+                    x={avgCpl} 
+                    stroke="hsl(var(--foreground))" 
+                    strokeDasharray="5 5"
+                    label={{ value: 'Avg CPL', position: 'top', fontSize: 10 }}
+                  />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                    {interestPerformance.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`}
+                        fill={entry.value <= avgCpl ? 'hsl(var(--status-scale))' : 'hsl(var(--status-risk))'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="mt-4 flex justify-center gap-6 text-xs">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-status-scale"></span>
+                  Below Avg (Good)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-status-risk"></span>
+                  Above Avg (Review)
+                </span>
+              </div>
             </div>
           )}
         </Card>

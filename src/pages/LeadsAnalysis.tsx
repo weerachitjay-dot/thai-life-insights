@@ -59,12 +59,17 @@ export default function LeadsAnalysisPage() {
               const dropoff = index === 0 ? null : 
                 index === 1 ? funnelData.metaToSentDropoff : funnelData.sentToTlDropoff;
 
+              const dropoffLabel = index === 1 ? 'Screening Process' : 'Customer Unreachable';
+              
               return (
                 <div key={step.name}>
                   {dropoff !== null && (
-                    <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
-                      <ArrowDown className="w-4 h-4" />
-                      <span className="text-sm font-mono">-{formatPercent(dropoff)} drop-off</span>
+                    <div className="flex flex-col items-center gap-1 py-2 text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <ArrowDown className="w-4 h-4" />
+                        <span className="text-sm font-mono">-{formatPercent(dropoff)} drop-off</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground/70 italic">{dropoffLabel}</span>
                     </div>
                   )}
                   <div className="relative">
