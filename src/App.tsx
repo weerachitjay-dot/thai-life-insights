@@ -12,6 +12,7 @@ import Audience from "./pages/Audience";
 import Optimization from "./pages/Optimization";
 import LeadsAnalysis from "./pages/LeadsAnalysis";
 import ProductMaster from "./pages/ProductMaster";
+import AiAssistant from "./pages/AiAssistant";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/optimization" element={<Optimization />} />
             <Route path="/leads" element={<LeadsAnalysis />} />
             <Route path="/products" element={<ProductMaster />} />
+            <Route path="/ai-chat" element={<AiAssistant />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </FilterProvider>
