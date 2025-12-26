@@ -38,6 +38,42 @@ export type Database = {
         }
         Relationships: []
       }
+      product_cycles: {
+        Row: {
+          created_at: string
+          cycle_name: string
+          delivery_end: string
+          delivery_start: string
+          id: string
+          is_active: boolean
+          product_name: string
+          target_partner: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_name?: string
+          delivery_end: string
+          delivery_start: string
+          id?: string
+          is_active?: boolean
+          product_name: string
+          target_partner?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          cycle_name?: string
+          delivery_end?: string
+          delivery_start?: string
+          id?: string
+          is_active?: boolean
+          product_name?: string
+          target_partner?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
