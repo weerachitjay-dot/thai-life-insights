@@ -43,6 +43,28 @@ export default function AiAssistantPage() {
   return (
     <DashboardLayout title="AI Assistant" subtitle="Chat with your Ad Data">
       <Card className="border-2 border-foreground h-[calc(100vh-220px)] flex flex-col">
+        {/* Suggestion Chips */}
+        <div className="p-4 border-b border-border">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: 'Daily Summary', prompt: 'สรุปยอด Sent Leads เมื่อวาน' },
+              { label: 'High CPL Alert', prompt: 'แคมเปญไหน CPL แพงสุด?' },
+              { label: 'Creative Ideas', prompt: 'ขอไอเดีย Content ใหม่' },
+              { label: 'Best Interest', prompt: 'Interest ไหนได้ผลดีที่สุด?' }
+            ].map((chip) => (
+              <button
+                key={chip.label}
+                onClick={() => {
+                  setInput(chip.prompt);
+                }}
+                className="px-3 py-1.5 text-sm bg-secondary hover:bg-secondary/80 rounded-full border border-border transition-colors"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Chat Area */}
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-4">
