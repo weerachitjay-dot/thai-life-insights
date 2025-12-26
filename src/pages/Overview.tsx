@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -10,19 +11,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Users, DollarSign, TrendingUp, Target } from 'lucide-react';
-import { OverviewKpiData, PerformanceRow } from '@/types';
+import { PerformanceRow } from '@/types';
 import { formatCurrency, formatNumber } from '@/lib/campaignParser';
+import { useFilter } from '@/contexts/FilterContext';
 
 // Mock data - Uses SENT Leads as primary metric
-const kpiData: OverviewKpiData = {
-  sentLeads: 6240,
-  sentLeadsTarget: 8000,
-  avgCplSent: 200,
-  totalSpend: 1250000,
-  projectedSentLeads: 7800,
-};
-
-const performanceData: PerformanceRow[] = [
+const allPerformanceData: PerformanceRow[] = [
   { product: 'LIFE-SENIOR-MORRADOK', category: 'Life', target: 2000, actual: 1650, percentAchieved: 82.5, runRateStatus: 'on-track' },
   { product: 'SAVING-RETIRE-GOLD', category: 'Saving', target: 1500, actual: 1420, percentAchieved: 94.7, runRateStatus: 'on-track' },
   { product: 'HEALTH-PLUS-PREMIUM', category: 'Health', target: 1800, actual: 1100, percentAchieved: 61.1, runRateStatus: 'at-risk' },
@@ -32,7 +26,28 @@ const performanceData: PerformanceRow[] = [
 ];
 
 export default function OverviewPage() {
-  const progressPercent = (kpiData.sentLeads / kpiData.sentLeadsTarget) * 100;
+  const { product } = useFilter();
+
+  // Filter data based on selected product
+  const performanceData = useMemo(() => {
+    if (product === 'all') return allPerformanceData;
+    return allPerformanceData.filter(row => row.product === product);
+  }, [product]);
+
+  // Calculate KPIs based on filtered data
+  const kpiData = useMemo(() => {
+    const sentLeads = performanceData.reduce((sum, row) => sum + row.actual, 0);
+    const sentLeadsTarget = performanceData.reduce((sum, row) => sum + row.target, 0);
+    const totalSpend = performanceData.length * 200000; // Mock calculation
+    const avgCplSent = sentLeads > 0 ? Math.round(totalSpend / sentLeads) : 0;
+    const projectedSentLeads = Math.round(sentLeads * 1.25); // Mock projection
+
+    return { sentLeads, sentLeadsTarget, avgCplSent, totalSpend, projectedSentLeads };
+  }, [performanceData]);
+
+  const progressPercent = kpiData.sentLeadsTarget > 0 
+    ? (kpiData.sentLeads / kpiData.sentLeadsTarget) * 100 
+    : 0;
 
   return (
     <DashboardLayout title="Overview" subtitle="Control Tower - Executive View">
@@ -105,7 +120,10 @@ export default function OverviewPage() {
       <Card className="border-2 border-foreground">
         <div className="p-4 border-b border-border">
           <h2 className="font-bold text-lg">Performance vs Target</h2>
-          <p className="text-sm text-muted-foreground">Sent Leads by Product (MTD)</p>
+          <p className="text-sm text-muted-foreground">
+            Sent Leads by Product (MTD) 
+            {product !== 'all' && <span className="ml-2 text-primary">• Filtered: {product}</span>}
+          </p>
         </div>
         <Table>
           <TableHeader>
@@ -118,45 +136,53 @@ export default function OverviewPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {performanceData.map((row) => (
-              <TableRow key={row.product}>
-                <TableCell>
-                  <div>
-                    <span className="font-medium">{row.product}</span>
-                    <span className={`ml-2 text-xs px-2 py-0.5 ${
-                      row.category === 'Life' ? 'bg-category-life/20 text-category-life' :
-                      row.category === 'Saving' ? 'bg-category-saving/20 text-category-saving' :
-                      'bg-category-health/20 text-category-health'
-                    }`}>
-                      {row.category}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right font-mono">{formatNumber(row.target)}</TableCell>
-                <TableCell className="text-right font-mono font-bold">{formatNumber(row.actual)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Progress value={row.percentAchieved} className="w-20 h-2" />
-                    <span className="font-mono text-sm w-14 text-right">{row.percentAchieved.toFixed(1)}%</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-bold uppercase ${
-                    row.runRateStatus === 'on-track' ? 'bg-status-scale/20 text-status-scale' :
-                    row.runRateStatus === 'at-risk' ? 'bg-status-risk/20 text-status-risk' :
-                    'bg-status-kill/20 text-status-kill'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${
-                      row.runRateStatus === 'on-track' ? 'bg-status-scale' :
-                      row.runRateStatus === 'at-risk' ? 'bg-status-risk' :
-                      'bg-status-kill'
-                    }`}></span>
-                    {row.runRateStatus === 'on-track' ? 'On Track' : 
-                     row.runRateStatus === 'at-risk' ? 'At Risk' : 'Behind'}
-                  </span>
+            {performanceData.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  No data found for selected filter
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              performanceData.map((row) => (
+                <TableRow key={row.product}>
+                  <TableCell>
+                    <div>
+                      <span className="font-medium">{row.product}</span>
+                      <span className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                        row.category === 'Life' ? 'bg-category-life/20 text-category-life' :
+                        row.category === 'Saving' ? 'bg-category-saving/20 text-category-saving' :
+                        'bg-category-health/20 text-category-health'
+                      }`}>
+                        {row.category}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right font-mono">{formatNumber(row.target)}</TableCell>
+                  <TableCell className="text-right font-mono font-bold">{formatNumber(row.actual)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Progress value={row.percentAchieved} className="w-20 h-2" />
+                      <span className="font-mono text-sm w-14 text-right">{row.percentAchieved.toFixed(1)}%</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-bold uppercase rounded ${
+                      row.runRateStatus === 'on-track' ? 'bg-status-scale/20 text-status-scale' :
+                      row.runRateStatus === 'at-risk' ? 'bg-status-risk/20 text-status-risk' :
+                      'bg-status-kill/20 text-status-kill'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${
+                        row.runRateStatus === 'on-track' ? 'bg-status-scale' :
+                        row.runRateStatus === 'at-risk' ? 'bg-status-risk' :
+                        'bg-status-kill'
+                      }`}></span>
+                      {row.runRateStatus === 'on-track' ? 'On Track' : 
+                       row.runRateStatus === 'at-risk' ? 'At Risk' : 'Behind'}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Card>
