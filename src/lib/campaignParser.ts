@@ -54,3 +54,8 @@ export function formatCurrency(amount: number): string {
 export function formatNumber(num: number): string {
   return num.toLocaleString('th-TH');
 }
+
+// Format percentage
+export function formatPercent(value: number): string {
+  return `${value.toFixed(1)}%`;
+}
