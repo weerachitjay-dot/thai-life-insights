@@ -75,6 +75,18 @@ export default {
 				DEFAULT: 'hsl(var(--category-health))',
 				foreground: 'hsl(var(--category-health-foreground))'
 			},
+			'lead-meta': {
+				DEFAULT: 'hsl(var(--lead-meta))',
+				foreground: 'hsl(var(--lead-meta-foreground))'
+			},
+			'lead-sent': {
+				DEFAULT: 'hsl(var(--lead-sent))',
+				foreground: 'hsl(var(--lead-sent-foreground))'
+			},
+			'lead-tl': {
+				DEFAULT: 'hsl(var(--lead-tl))',
+				foreground: 'hsl(var(--lead-tl-foreground))'
+			},
   			sidebar: {
   				DEFAULT: 'hsl(var(--sidebar-background))',
   				foreground: 'hsl(var(--sidebar-foreground))',

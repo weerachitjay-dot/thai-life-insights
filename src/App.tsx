@@ -3,7 +3,13 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import Overview from "./pages/Overview";
+import CostProfit from "./pages/CostProfit";
+import Creative from "./pages/Creative";
+import Audience from "./pages/Audience";
+import Optimization from "./pages/Optimization";
+import LeadsAnalysis from "./pages/LeadsAnalysis";
+import ProductMaster from "./pages/ProductMaster";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -15,8 +21,13 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/" element={<Overview />} />
+          <Route path="/cost-profit" element={<CostProfit />} />
+          <Route path="/creative" element={<Creative />} />
+          <Route path="/audience" element={<Audience />} />
+          <Route path="/optimization" element={<Optimization />} />
+          <Route path="/leads" element={<LeadsAnalysis />} />
+          <Route path="/products" element={<ProductMaster />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
