@@ -14,7 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      config_tokens: {
+        Row: {
+          access_token: string
+          id: number
+          provider: string
+          token_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          id?: number
+          provider: string
+          token_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          id?: number
+          provider?: string
+          token_type?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
