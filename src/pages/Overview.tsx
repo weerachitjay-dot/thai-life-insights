@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -15,6 +15,15 @@ import { Users, DollarSign, TrendingUp, Target, ArrowUpDown, Info } from 'lucide
 import { PerformanceRow } from '@/types';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/campaignParser';
 import { useFilter } from '@/contexts/FilterContext';
+import { supabase } from '@/integrations/supabase/client';
+
+interface ProductCycle {
+  id: string;
+  product_name: string;
+  delivery_start: string;
+  delivery_end: string;
+  target_partner: number;
+}
 
 // Mock data - Uses SENT Leads as primary metric, Partner Leads as shadow metric
 // Logic: targetSent = businessTarget / expectedConvRate
@@ -93,6 +102,34 @@ const allPerformanceData: PerformanceRow[] = [
   },
 ];
 
+// Effective Operational Days projection algorithm
+const calculateProjection = (sentLeads: number, deliveryStart: string, deliveryEnd: string): number => {
+  const today = new Date();
+  const start = new Date(deliveryStart);
+  const end = new Date(deliveryEnd);
+
+  // Case A: Before Delivery Starts (Warm-up period)
+  if (today < start) return 0;
+
+  // Case B: Cycle Ended
+  if (today > end) return sentLeads;
+
+  // Case C: Active Delivery Period
+  // Calculate elapsed days starting from deliveryStart (not ad start)
+  const daysElapsed = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+  // Calculate remaining days until deliveryEnd
+  const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Protect against division by zero
+  if (daysElapsed <= 0) return 0;
+  
+  const runRate = sentLeads / daysElapsed;
+  const forecast = sentLeads + (runRate * daysRemaining);
+
+  return Math.floor(forecast);
+};
+
 type SortKey = 'product' | 'targetSent' | 'actualSent' | 'percentAchieved' | 'partnerLeads' | 'convRate' | 'runRateStatus';
 type SortOrder = 'asc' | 'desc';
 
@@ -100,6 +137,22 @@ export default function OverviewPage() {
   const { product } = useFilter();
   const [sortKey, setSortKey] = useState<SortKey>('runRateStatus');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [productCycles, setProductCycles] = useState<ProductCycle[]>([]);
+
+  // Fetch product cycles from Supabase
+  useEffect(() => {
+    const fetchCycles = async () => {
+      const { data, error } = await supabase
+        .from('product_cycles')
+        .select('id, product_name, delivery_start, delivery_end, target_partner')
+        .eq('is_active', true);
+
+      if (!error && data) {
+        setProductCycles(data);
+      }
+    };
+    fetchCycles();
+  }, []);
 
   // Filter data based on selected product
   const filteredData = useMemo(() => {
@@ -132,6 +185,27 @@ export default function OverviewPage() {
     }
   };
 
+  // Calculate projections using the Effective Operational Days algorithm
+  const productProjections = useMemo(() => {
+    const projections: Record<string, number> = {};
+    
+    performanceData.forEach(row => {
+      const cycle = productCycles.find(c => c.product_name === row.product);
+      if (cycle) {
+        projections[row.product] = calculateProjection(
+          row.actualSent,
+          cycle.delivery_start,
+          cycle.delivery_end
+        );
+      } else {
+        // Fallback: use a simple 1.25x multiplier if no cycle configured
+        projections[row.product] = Math.round(row.actualSent * 1.25);
+      }
+    });
+    
+    return projections;
+  }, [performanceData, productCycles]);
+
   // Calculate KPIs based on filtered data
   const kpiData = useMemo(() => {
     const sentLeads = performanceData.reduce((sum, row) => sum + row.actualSent, 0);
@@ -139,10 +213,14 @@ export default function OverviewPage() {
     const partnerLeads = performanceData.reduce((sum, row) => sum + row.partnerLeads, 0);
     const totalSpend = performanceData.length * 200000; // Mock calculation
     const avgCplSent = sentLeads > 0 ? Math.round(totalSpend / sentLeads) : 0;
-    const projectedSentLeads = Math.round(sentLeads * 1.25); // Mock projection
+    
+    // Sum all individual product projections
+    const projectedSentLeads = performanceData.reduce((sum, row) => {
+      return sum + (productProjections[row.product] || 0);
+    }, 0);
 
     return { sentLeads, sentLeadsTarget, partnerLeads, avgCplSent, totalSpend, projectedSentLeads };
-  }, [performanceData]);
+  }, [performanceData, productProjections]);
 
   const progressPercent = kpiData.sentLeadsTarget > 0 
     ? (kpiData.sentLeads / kpiData.sentLeadsTarget) * 100 
@@ -224,7 +302,7 @@ export default function OverviewPage() {
                       <Info className="w-3 h-3 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="text-xs max-w-[200px]">Calculated by: Current Sent Leads × (Days Remaining / Days Elapsed) + Current Sent Leads</p>
+                      <p className="text-xs max-w-[200px]">Effective Operational Days: Current + (Run Rate × Days Remaining). Based on delivery window configured in Data Management.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -236,7 +314,7 @@ export default function OverviewPage() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground">Forecasted Sent Leads (EOM)</p>
-          <p className="text-[10px] text-muted-foreground/70 mt-1">Based on current run rate</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">Based on delivery window run rate</p>
         </Card>
       </div>
 
@@ -290,6 +368,21 @@ export default function OverviewPage() {
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </TableHead>
+                <TableHead className="font-bold text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger className="flex items-center gap-1">
+                          Projection
+                          <Info className="w-3 h-3" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs">Forecasted based on delivery window</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </TableHead>
                 <TableHead 
                   className="font-bold text-right cursor-pointer hover:text-primary"
                   onClick={() => handleSort('percentAchieved')}
@@ -331,7 +424,7 @@ export default function OverviewPage() {
             <TableBody>
               {performanceData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     No data found for selected filter
                   </TableCell>
                 </TableRow>
@@ -355,6 +448,9 @@ export default function OverviewPage() {
                     </TableCell>
                     <TableCell className="text-right font-mono font-bold text-lg bg-lead-sent/5">
                       {formatNumber(row.actualSent)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm text-status-scale">
+                      {formatNumber(productProjections[row.product] || 0)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -401,6 +497,8 @@ export default function OverviewPage() {
       <div className="mt-4 p-3 bg-secondary/50 border border-border rounded text-xs text-muted-foreground">
         <span className="font-bold">Legend:</span>
         <span className="ml-3">Target (Sent) = Business Target ÷ Expected Conv Rate (70%)</span>
+        <span className="mx-2">|</span>
+        <span>Projection = Effective Operational Days Algorithm</span>
         <span className="mx-2">|</span>
         <span>% Conv colors: <span className="text-status-scale font-bold">≥70% Good</span>, <span className="text-status-hold font-bold">50-70% Watch</span>, <span className="text-status-risk font-bold">&lt;50% Risk</span></span>
       </div>

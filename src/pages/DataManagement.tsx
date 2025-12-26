@@ -11,6 +11,7 @@ import {
   CheckCircle, XCircle, Clock, LogOut, Upload, Cpu, Save
 } from 'lucide-react';
 import { FacebookConnect } from '@/components/admin/FacebookConnect';
+import { ProductCycleConfig } from '@/components/admin/ProductCycleConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -188,6 +189,9 @@ export default function DataManagement() {
 
         {/* Facebook Connect */}
         <FacebookConnect />
+
+        {/* Product Delivery Cycles */}
+        <ProductCycleConfig />
 
         {/* AI Service Configuration */}
         <Card className="p-6">
