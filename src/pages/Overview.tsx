@@ -103,31 +103,74 @@ const allPerformanceData: PerformanceRow[] = [
 ];
 
 // Effective Operational Days projection algorithm
-const calculateProjection = (sentLeads: number, deliveryStart: string, deliveryEnd: string): number => {
+// Returns: { projection, elapsedDays, remainingDays, runRate, status }
+interface ProjectionResult {
+  projection: number;
+  elapsedDays: number;
+  remainingDays: number;
+  runRate: number;
+  status: 'pending' | 'active' | 'ended';
+}
+
+const calculateProjection = (sentLeads: number, deliveryStart: string, deliveryEnd: string): ProjectionResult => {
   const today = new Date();
+  today.setHours(0, 0, 0, 0); // Normalize to start of day
   const start = new Date(deliveryStart);
+  start.setHours(0, 0, 0, 0);
   const end = new Date(deliveryEnd);
+  end.setHours(0, 0, 0, 0);
 
   // Case A: Before Delivery Starts (Warm-up period)
-  if (today < start) return 0;
+  if (today < start) {
+    return {
+      projection: 0,
+      elapsedDays: 0,
+      remainingDays: Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+      runRate: 0,
+      status: 'pending'
+    };
+  }
 
   // Case B: Cycle Ended
-  if (today > end) return sentLeads;
+  if (today > end) {
+    const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return {
+      projection: sentLeads,
+      elapsedDays: totalDays,
+      remainingDays: 0,
+      runRate: totalDays > 0 ? sentLeads / totalDays : 0,
+      status: 'ended'
+    };
+  }
 
   // Case C: Active Delivery Period
-  // Calculate elapsed days starting from deliveryStart (not ad start)
-  const daysElapsed = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  // Calculate elapsed days starting from deliveryStart (inclusive of today)
+  const elapsedDays = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-  // Calculate remaining days until deliveryEnd
-  const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  // Calculate remaining days until deliveryEnd (inclusive)
+  const remainingDays = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
   // Protect against division by zero
-  if (daysElapsed <= 0) return 0;
+  if (elapsedDays <= 0) {
+    return {
+      projection: 0,
+      elapsedDays: 0,
+      remainingDays,
+      runRate: 0,
+      status: 'active'
+    };
+  }
   
-  const runRate = sentLeads / daysElapsed;
-  const forecast = sentLeads + (runRate * daysRemaining);
+  const runRate = sentLeads / elapsedDays;
+  const forecast = sentLeads + (runRate * remainingDays);
 
-  return Math.floor(forecast);
+  return {
+    projection: Math.floor(forecast),
+    elapsedDays,
+    remainingDays,
+    runRate: Math.round(runRate * 10) / 10,
+    status: 'active'
+  };
 };
 
 type SortKey = 'product' | 'targetSent' | 'actualSent' | 'percentAchieved' | 'partnerLeads' | 'convRate' | 'runRateStatus';
@@ -211,7 +254,7 @@ export default function OverviewPage() {
 
   // Calculate projections using the Effective Operational Days algorithm
   const productProjections = useMemo(() => {
-    const projections: Record<string, number> = {};
+    const projections: Record<string, ProjectionResult> = {};
     
     performanceData.forEach(row => {
       const cycle = productCycles.find(c => c.product_name === row.product);
@@ -223,7 +266,13 @@ export default function OverviewPage() {
         );
       } else {
         // Fallback: use a simple 1.25x multiplier if no cycle configured
-        projections[row.product] = Math.round(row.actualSent * 1.25);
+        projections[row.product] = {
+          projection: Math.round(row.actualSent * 1.25),
+          elapsedDays: 0,
+          remainingDays: 0,
+          runRate: 0,
+          status: 'pending' as const
+        };
       }
     });
     
@@ -240,7 +289,7 @@ export default function OverviewPage() {
     
     // Sum all individual product projections
     const projectedSentLeads = performanceData.reduce((sum, row) => {
-      return sum + (productProjections[row.product] || 0);
+      return sum + (productProjections[row.product]?.projection || 0);
     }, 0);
 
     return { sentLeads, sentLeadsTarget, partnerLeads, avgCplSent, totalSpend, projectedSentLeads };
@@ -473,8 +522,12 @@ export default function OverviewPage() {
                     <TableCell className="text-right font-mono font-bold text-lg bg-lead-sent/5">
                       {formatNumber(row.actualSent)}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-sm text-status-scale">
-                      {formatNumber(productProjections[row.product] || 0)}
+                    <TableCell className="text-right font-mono text-sm">
+                      {productProjections[row.product]?.status === 'pending' ? (
+                        <span className="text-muted-foreground">Pending</span>
+                      ) : (
+                        <span className="text-status-scale">{formatNumber(productProjections[row.product]?.projection || 0)}</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
