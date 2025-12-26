@@ -1,19 +1,13 @@
 import { ReactNode } from 'react';
+import { format } from 'date-fns';
 import { AppSidebar } from './AppSidebar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, Package } from 'lucide-react';
-
-// รายชื่อ Product ทั้งหมด
-const products = [
-  { value: 'all', label: 'All Products' },
-  { value: 'LIFE-SENIOR-MORRADOK', label: 'LIFE-SENIOR-MORRADOK', category: 'Life' },
-  { value: 'SAVING-RETIRE-GOLD', label: 'SAVING-RETIRE-GOLD', category: 'Saving' },
-  { value: 'HEALTH-PLUS-PREMIUM', label: 'HEALTH-PLUS-PREMIUM', category: 'Health' },
-  { value: 'LIFE-PROTECT-FAMILY', label: 'LIFE-PROTECT-FAMILY', category: 'Life' },
-  { value: 'SAVING-EDU-FUTURE', label: 'SAVING-EDU-FUTURE', category: 'Saving' },
-  { value: 'HEALTH-CRITICAL-CARE', label: 'HEALTH-CRITICAL-CARE', category: 'Health' },
-];
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarIcon, RefreshCw, Package } from 'lucide-react';
+import { useFilter, products, accounts } from '@/contexts/FilterContext';
+import { cn } from '@/lib/utils';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -22,6 +16,8 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, title, subtitle }: DashboardLayoutProps) {
+  const { account, setAccount, product, setProduct, dateRange, setDateRange } = useFilter();
+
   return (
     <div className="min-h-screen flex w-full bg-background">
       {/* Sidebar */}
@@ -38,19 +34,21 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Account Selector */}
-            <Select defaultValue="all">
+            <Select value={account} onValueChange={setAccount}>
               <SelectTrigger className="w-36 border-border bg-card">
                 <SelectValue placeholder="Account" />
               </SelectTrigger>
               <SelectContent className="bg-card border-border">
-                <SelectItem value="all">All Accounts</SelectItem>
-                <SelectItem value="a">Account A</SelectItem>
-                <SelectItem value="b">Account B</SelectItem>
+                {accounts.map((acc) => (
+                  <SelectItem key={acc.value} value={acc.value}>
+                    {acc.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
             {/* Product Selector */}
-            <Select defaultValue="all">
+            <Select value={product} onValueChange={setProduct}>
               <SelectTrigger className="w-52 border-border bg-card">
                 <div className="flex items-center gap-2">
                   <Package className="w-4 h-4 text-muted-foreground" />
@@ -58,17 +56,18 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
                 </div>
               </SelectTrigger>
               <SelectContent className="bg-card border-border">
-                {products.map((product) => (
-                  <SelectItem key={product.value} value={product.value}>
+                {products.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
                     <div className="flex items-center gap-2">
-                      <span>{product.label}</span>
-                      {product.category && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          product.category === 'Life' ? 'bg-category-life/20 text-category-life' :
-                          product.category === 'Saving' ? 'bg-category-saving/20 text-category-saving' :
-                          'bg-category-health/20 text-category-health'
-                        }`}>
-                          {product.category}
+                      <span>{p.label}</span>
+                      {p.category && (
+                        <span className={cn(
+                          "text-xs px-1.5 py-0.5 rounded",
+                          p.category === 'Life' && 'bg-category-life/20 text-category-life',
+                          p.category === 'Saving' && 'bg-category-saving/20 text-category-saving',
+                          p.category === 'Health' && 'bg-category-health/20 text-category-health'
+                        )}>
+                          {p.category}
                         </span>
                       )}
                     </div>
@@ -77,11 +76,30 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
               </SelectContent>
             </Select>
 
-            {/* Date Range */}
-            <Button variant="outline" size="sm" className="gap-2 border-border">
-              <Calendar className="w-4 h-4" />
-              <span className="font-mono text-xs">MTD: Dec 1-26</span>
-            </Button>
+            {/* Date Range Picker */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2 border-border">
+                  <CalendarIcon className="w-4 h-4" />
+                  <span className="font-mono text-xs">
+                    {format(dateRange.from, 'MMM d')} - {format(dateRange.to, 'MMM d')}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 bg-card border-border" align="end">
+                <Calendar
+                  mode="range"
+                  selected={{ from: dateRange.from, to: dateRange.to }}
+                  onSelect={(range) => {
+                    if (range?.from && range?.to) {
+                      setDateRange({ from: range.from, to: range.to });
+                    }
+                  }}
+                  numberOfMonths={2}
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
 
             {/* Refresh */}
             <Button variant="outline" size="icon" className="border-border">
@@ -89,6 +107,34 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
             </Button>
           </div>
         </header>
+
+        {/* Active Filters Display */}
+        {(product !== 'all' || account !== 'all') && (
+          <div className="px-4 py-2 bg-secondary/50 border-b border-border flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Active Filters:</span>
+            {account !== 'all' && (
+              <span className="px-2 py-1 bg-primary/10 text-primary rounded">
+                {accounts.find(a => a.value === account)?.label}
+              </span>
+            )}
+            {product !== 'all' && (
+              <span className="px-2 py-1 bg-primary/10 text-primary rounded">
+                {product}
+              </span>
+            )}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-6 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setAccount('all');
+                setProduct('all');
+              }}
+            >
+              Clear All
+            </Button>
+          </div>
+        )}
 
         {/* Main Content */}
         <main className="flex-1 p-6 overflow-auto">
@@ -98,7 +144,7 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
         {/* Footer */}
         <footer className="h-10 border-t border-border bg-secondary/50 flex items-center justify-between px-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-4">
-            <span>Last Updated: Dec 26, 2025 14:32</span>
+            <span>Last Updated: {format(new Date(), 'MMM d, yyyy HH:mm')}</span>
             <span>Data Source: Meta Ads API</span>
           </div>
           <div className="flex items-center gap-3">
