@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { 
   Database, RefreshCcw, Settings, 
-  CheckCircle, XCircle, Clock, LogOut, Upload, Cpu, Save
+  CheckCircle, XCircle, Clock, LogOut, Upload, Save, Link2
 } from 'lucide-react';
 import { FacebookConnect } from '@/components/admin/FacebookConnect';
 import { ProductCycleConfig } from '@/components/admin/ProductCycleConfig';
@@ -187,58 +187,70 @@ export default function DataManagement() {
           </Card>
         </div>
 
-        {/* Facebook Connect */}
-        <FacebookConnect />
-
-        {/* Product Delivery Cycles */}
-        <ProductCycleConfig />
-
-        {/* AI Service Configuration */}
+        {/* API Configuration Card */}
         <Card className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
-              <Cpu className="w-5 h-5 text-purple-500" />
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Link2 className="w-5 h-5 text-primary" />
             </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-semibold text-foreground">AI Service Configuration</h2>
-              <p className="text-sm text-muted-foreground">Configure API keys for AI-powered features</p>
-            </div>
-            {hasStoredKeys && (
-              <Badge variant="outline" className="text-green-600 border-green-600">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Configured
-              </Badge>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="space-y-2">
-              <Label htmlFor="groq-key">Groq API Key</Label>
-              <Input
-                id="groq-key"
-                type="password"
-                placeholder="gsk_..."
-                value={groqKey}
-                onChange={(e) => setGroqKey(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="gemini-key">Gemini API Key</Label>
-              <Input
-                id="gemini-key"
-                type="password"
-                placeholder="AIza..."
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-              />
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">API Configuration</h2>
+              <p className="text-sm text-muted-foreground">Connect external services and configure API keys</p>
             </div>
           </div>
 
-          <Button onClick={handleSaveKeys} disabled={isSaving} className="gap-2">
-            <Save className="w-4 h-4" />
-            {isSaving ? 'Saving...' : 'Save Keys'}
-          </Button>
+          {/* Facebook Connect Section */}
+          <div className="mb-6">
+            <FacebookConnect />
+          </div>
+
+          {/* AI Service Keys Section */}
+          <div className="border-t border-border pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-foreground">AI Service Keys</h3>
+                <p className="text-sm text-muted-foreground">Configure API keys for AI-powered features</p>
+              </div>
+              {hasStoredKeys && (
+                <Badge variant="outline" className="text-green-600 border-green-600">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Configured
+                </Badge>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="space-y-2">
+                <Label htmlFor="groq-key">Groq API Key</Label>
+                <Input
+                  id="groq-key"
+                  type="password"
+                  placeholder="gsk_..."
+                  value={groqKey}
+                  onChange={(e) => setGroqKey(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gemini-key">Gemini API Key</Label>
+                <Input
+                  id="gemini-key"
+                  type="password"
+                  placeholder="AIza..."
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <Button onClick={handleSaveKeys} disabled={isSaving} className="gap-2">
+              <Save className="w-4 h-4" />
+              {isSaving ? 'Saving...' : 'Save Keys'}
+            </Button>
+          </div>
         </Card>
+
+        {/* Monthly Delivery Cycles */}
+        <ProductCycleConfig />
 
         {/* Other Connections Table */}
         <Card className="p-6">
@@ -285,4 +297,3 @@ export default function DataManagement() {
     </DashboardLayout>
   );
 }
-
