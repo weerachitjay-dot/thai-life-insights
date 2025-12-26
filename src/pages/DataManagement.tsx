@@ -8,14 +8,9 @@ import {
   Database, RefreshCcw, Settings, 
   CheckCircle, XCircle, Clock, LogOut, Upload 
 } from 'lucide-react';
+import { FacebookConnect } from '@/components/admin/FacebookConnect';
 
 const dataConnections = [
-  { 
-    name: 'Facebook Ads API', 
-    status: 'connected', 
-    lastSync: '2 hours ago',
-    records: '12,450'
-  },
   { 
     name: 'Google Sheets (Leads)', 
     status: 'connected', 
@@ -125,10 +120,13 @@ export default function DataManagement() {
           </Card>
         </div>
 
-        {/* Connections Table */}
+        {/* Facebook Connect */}
+        <FacebookConnect />
+
+        {/* Other Connections Table */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Data Connections</h2>
+            <h2 className="text-lg font-semibold text-foreground">Other Data Connections</h2>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="gap-2">
                 <Upload className="w-4 h-4" />
