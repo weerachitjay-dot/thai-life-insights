@@ -3,7 +3,7 @@ import {
   LayoutDashboard, DollarSign, 
   Palette, Users, FlaskConical, 
   BarChart2, Database,
-  Briefcase, Bot
+  Briefcase, Bot, Search
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +20,7 @@ const navGroups = [
     items: [
       { name: 'Creative Analysis', href: '/creative', icon: Palette },
       { name: 'Smart Audience', href: '/audience', icon: Users },
+      { name: 'Audience Lab', href: '/audience-lab', icon: Search },
       { name: 'Optimization Lab', href: '/optimization', icon: FlaskConical },
       { name: 'AI Assistant', href: '/ai-chat', icon: Bot },
     ],
