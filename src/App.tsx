@@ -1,9 +1,10 @@
+// App.tsx - Main Application Entry
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { FilterProvider } from "./contexts/FilterContext";
+import { FilterProvider } from "@/contexts/FilterContext";
 import Overview from "./pages/Overview";
 import CostProfit from "./pages/CostProfit";
 import Creative from "./pages/Creative";
