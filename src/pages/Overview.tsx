@@ -154,11 +154,35 @@ export default function OverviewPage() {
     fetchCycles();
   }, []);
 
+  // Merge mock data with target_partner from Supabase
+  const performanceDataWithTargets = useMemo(() => {
+    return allPerformanceData.map(row => {
+      const cycle = productCycles.find(c => c.product_name === row.product);
+      if (cycle) {
+        // Use target_partner from Supabase instead of hardcoded businessTarget
+        const newBusinessTarget = cycle.target_partner;
+        const expectedConvRate = row.expectedConvRate || 0.70;
+        const newTargetSent = Math.round(newBusinessTarget / expectedConvRate);
+        const newPercentAchieved = newTargetSent > 0 
+          ? (row.actualSent / newTargetSent) * 100 
+          : 0;
+        
+        return {
+          ...row,
+          businessTarget: newBusinessTarget,
+          targetSent: newTargetSent,
+          percentAchieved: newPercentAchieved
+        };
+      }
+      return row;
+    });
+  }, [productCycles]);
+
   // Filter data based on selected product
   const filteredData = useMemo(() => {
-    if (product === 'all') return allPerformanceData;
-    return allPerformanceData.filter(row => row.product === product);
-  }, [product]);
+    if (product === 'all') return performanceDataWithTargets;
+    return performanceDataWithTargets.filter(row => row.product === product);
+  }, [product, performanceDataWithTargets]);
 
   // Sort data
   const performanceData = useMemo(() => {
