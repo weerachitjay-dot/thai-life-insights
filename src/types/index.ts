@@ -135,3 +135,11 @@ export interface ProductMatrixRow {
   messages: { cpl: number; status: CampaignStatus } | null;
   action: string;
 }
+
+export interface ProductSetting {
+  id: number;
+  product_code: string;
+  sell_price: number;
+  owner_name: string;
+  target_cpl: number;
+}

@@ -6,25 +6,26 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  Database, RefreshCcw, Settings, 
+import {
+  Database, RefreshCcw, Settings,
   CheckCircle, XCircle, Clock, LogOut, Upload, Cpu, Save
 } from 'lucide-react';
 import { FacebookConnect } from '@/components/admin/FacebookConnect';
 import { ProductCycleConfig } from '@/components/admin/ProductCycleConfig';
+import { ProductSettingsTable } from '@/components/admin/ProductSettingsTable';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
 const dataConnections = [
-  { 
-    name: 'Google Sheets (Leads)', 
-    status: 'connected', 
+  {
+    name: 'Google Sheets (Leads)',
+    status: 'connected',
     lastSync: '30 min ago',
     records: '3,245'
   },
-  { 
-    name: 'CRM Database', 
-    status: 'pending', 
+  {
+    name: 'CRM Database',
+    status: 'pending',
     lastSync: 'Never',
     records: '-'
   },
@@ -64,7 +65,7 @@ export default function DataManagement() {
     setIsSaving(true);
     try {
       const updates = [];
-      
+
       if (groqKey) {
         updates.push({
           provider: 'groq',
@@ -73,7 +74,7 @@ export default function DataManagement() {
           updated_at: new Date().toISOString()
         });
       }
-      
+
       if (geminiKey) {
         updates.push({
           provider: 'gemini',
@@ -89,7 +90,7 @@ export default function DataManagement() {
           .upsert(updates, { onConflict: 'provider' });
 
         if (error) throw error;
-        
+
         setHasStoredKeys(true);
         toast({
           title: "AI Keys Updated",
@@ -193,6 +194,9 @@ export default function DataManagement() {
         {/* Product Delivery Cycles */}
         <ProductCycleConfig />
 
+        {/* Product Settings (Financials & Config) */}
+        <ProductSettingsTable />
+
         {/* AI Service Configuration */}
         <Card className="p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -255,11 +259,11 @@ export default function DataManagement() {
               </Button>
             </div>
           </div>
-          
+
           <div className="space-y-3">
             {dataConnections.map((conn, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-secondary/50 transition-colors"
               >
                 <div className="flex items-center gap-4">
