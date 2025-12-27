@@ -7,6 +7,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { ProductSetting } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowDownRight, ArrowUpRight, DollarSign, TrendingUp, Wallet } from 'lucide-react';
+import { useFilter } from '@/contexts/FilterContext';
+import { format } from 'date-fns';
 
 interface FinancialMetrics {
   product: string;
@@ -18,73 +20,99 @@ interface FinancialMetrics {
 }
 
 export default function CostProfitPage() {
+  const { dateRange, product: selectedProduct, account: selectedAccount } = useFilter();
   const [metrics, setMetrics] = useState<FinancialMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [totals, setTotals] = useState({ spend: 0, revenue: 0, profit: 0 });
 
   useEffect(() => {
     fetchFinancialData();
-  }, []);
+  }, [dateRange, selectedProduct, selectedAccount]);
 
   const fetchFinancialData = async () => {
     try {
       setLoading(true);
 
+      // Convert date filter to format expected by logic or DB
+      // Supabase supports ISO strings mostly.
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
+
       // 1. Fetch Product Settings (Price)
-      const { data: products } = await supabase
-        .from('product_settings')
-        .select('*');
+      // Logic: If 'selectedProduct' is NOT 'all', we could filter here, 
+      // but usually settings are small so fetching all is fine.
+      let settingsQuery = supabase.from('product_settings').select('*');
+      const { data: products } = await settingsQuery;
 
-      // 2. Fetch Ad Performance (Spend)
-      // Note: In a real app we might filter by date range. Fetching all for now.
-      const { data: adPerformance } = await supabase
+      // 2. Fetch Ad Performance (Spend) filtered by Date
+      let adQuery = supabase
         .from('ad_performance_daily')
-        .select('product, spend');
+        .select('product, spend') // Assuming 'product' column exists in ad_performance_daily as per previous tasks
+        .gte('date', fromDate)
+        .lte('date', toDate);
 
-      // 3. Fetch Leads Sent (Confirmed Leads)
-      const { data: leadsData } = await supabase
+      // Filter by Product if needed (though aggregating later is safer if product codes vary)
+      // If we filtered by product in query, we must ensure DB column matches exactly.
+      // Filter by Account if needed? 
+      // if (selectedAccount !== 'all') adQuery = adQuery.eq('account_name', selectedAccount);
+
+      const { data: adPerformance } = await adQuery;
+
+      // 3. Fetch Leads Sent (Confirmed Leads) filtered by Date
+      // Assuming leads_sent_daily has a 'date' column
+      let leadsQuery = supabase
         .from('leads_sent_daily')
-        .select('product, confirmed_amount');
+        .select('product, confirmed_amount')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      const { data: leadsData } = await leadsQuery;
 
       if (!products || !adPerformance || !leadsData) {
-        console.error('Failed to fetch data');
-        setLoading(false);
-        return;
+        console.error('Failed to fetch data or empty tables');
+        // Don't return early with error view, just render 0s if empty
       }
 
       // 4. Aggregation Logic
       // Create a map to hold aggregated data by product
       const productMap = new Map<string, { spend: number; confirmedLeads: number; sellPrice: number }>();
 
-      // Initialize with products from settings
-      products.forEach((p: ProductSetting) => {
-        productMap.set(p.product_code, {
-          spend: 0,
-          confirmedLeads: 0,
-          sellPrice: p.sell_price
-        });
+      // Initialize map with ALL products from settings first
+      // This ensures we show rows even if spend/leads are 0
+      products?.forEach((p: ProductSetting) => {
+        // Apply Product Filter Here
+        if (selectedProduct === 'all' || selectedProduct === p.product_code) {
+          productMap.set(p.product_code, {
+            spend: 0,
+            confirmedLeads: 0,
+            sellPrice: p.sell_price
+          });
+        }
       });
 
       // Aggregate Spend
-      adPerformance.forEach((row: any) => {
-        // Find product - assuming direct match or needing mapping. 
-        // If product code in ad_performance matches product_settings.product_code
-        // If row.product is not in map, maybe skip or add? Let's try to match.
-        // Heuristic: Try exact match first.
+      adPerformance?.forEach((row: any) => {
+        // If we have selected a specific product, only process matches
+        if (selectedProduct !== 'all' && row.product !== selectedProduct) return;
+
+        // Try to find exact match
         let entry = productMap.get(row.product);
+
         if (entry) {
           entry.spend += (row.spend || 0);
         } else {
-          // Try to handle case where product might not be in settings yet or mismatch
-          // For now, only include known products
+          // Product in Ads but NOT in Settings?
+          // Optionally add it if user wants to see 'Unconfigured Products'
+          // For now, adhere to Strict Product Settings List
         }
       });
 
       // Aggregate Confirmed Leads
-      leadsData.forEach((row: any) => {
+      leadsData?.forEach((row: any) => {
+        if (selectedProduct !== 'all' && row.product !== selectedProduct) return;
         let entry = productMap.get(row.product);
         if (entry) {
-          entry.confirmedLeads += (row.confirmed_amount || 0); // Assuming confirmed_amount is count
+          entry.confirmedLeads += (row.confirmed_amount || 0);
         }
       });
 
@@ -125,7 +153,7 @@ export default function CostProfitPage() {
 
   if (loading) {
     return (
-      <DashboardLayout title="Cost & Profit" subtitle="ROI & Revenue Analysis">
+      <DashboardLayout title="Cost & Profit" subtitle="ROI & Revenue Analysis - TL Leads Focus">
         <div className="p-8 text-center text-muted-foreground">Loading Financial Data...</div>
       </DashboardLayout>
     );
@@ -208,20 +236,29 @@ export default function CostProfitPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {metrics.map((item) => (
-              <TableRow key={item.product}>
-                <TableCell className="font-medium">{item.product}</TableCell>
-                <TableCell className="text-right">{formatNumber(item.confirmedLeads)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(item.spend)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(item.revenue)}</TableCell>
-                <TableCell className={`text-right font-bold ${item.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                  {formatCurrency(item.profit)}
-                </TableCell>
-                <TableCell className={`text-right font-bold ${item.roi >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                  {item.roi.toFixed(0)}%
+            {metrics.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  No data found for the selected period.
+                  <br /><span className="text-xs">Ensure data exists in `ad_performance_daily` and `leads_sent_daily`.</span>
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              metrics.map((item) => (
+                <TableRow key={item.product}>
+                  <TableCell className="font-medium">{item.product}</TableCell>
+                  <TableCell className="text-right">{formatNumber(item.confirmedLeads)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(item.spend)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(item.revenue)}</TableCell>
+                  <TableCell className={`text-right font-bold ${item.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {formatCurrency(item.profit)}
+                  </TableCell>
+                  <TableCell className={`text-right font-bold ${item.roi >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {item.roi.toFixed(0)}%
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Card>

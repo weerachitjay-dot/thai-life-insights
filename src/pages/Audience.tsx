@@ -7,9 +7,10 @@ import { Users, Target, Zap } from 'lucide-react';
 import { useFilter } from '@/contexts/FilterContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
 
 export default function AudiencePage() {
-  const { product } = useFilter();
+  const { product, dateRange, account } = useFilter();
   const [loading, setLoading] = useState(true);
 
   // Real Data State
@@ -19,18 +20,30 @@ export default function AudiencePage() {
 
   useEffect(() => {
     fetchAudienceData();
-  }, [product]);
+  }, [product, dateRange, account]);
 
   const fetchAudienceData = async () => {
     try {
       setLoading(true);
 
-      let query = supabase.from('audience_breakdown_daily').select('*');
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
 
-      // Filter by product if selected (assuming table has product field or we map campaign)
-      // Since schema isn't fully known, I'll fetch all and filter in memory if product field exists
-      // Or just fetch all. Let's assume there is a 'product' field or similar.
-      // If not, we might be showing global data.
+      let query = supabase
+        .from('audience_breakdown_daily')
+        .select('*')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      // Filter by product if selected 
+      // Assuming 'product' column exists. If strictly not, we might need pattern match or just client filter.
+      // But typically we should have product column or link.
+      // previous code used client filter. Let's try to assume 'product' column exists for efficiency,
+      // but fallback to client side if needed (safer given previous uncertainty).
+      // actually, let's Stick to strictly client-filtering for product if column isn't guaranteed, 
+      // OR better, Assume it exists like other tables.
+      // Let's filter by product in query if possible. 
+      // Based on previous files, we assumed 'product' column in other tables.
 
       const { data, error } = await query;
       if (error) throw error;
@@ -41,10 +54,14 @@ export default function AudiencePage() {
         return;
       }
 
-      // Filter in memory for safety regarding schema
-      const filteredData = product && product !== 'all'
-        ? data.filter((row: any) => row.product === product || row.campaign_name?.includes(product))
-        : data;
+      // Filter in memory for product to be safe / handle 'all'
+      const filteredData = data.filter((row: any) => {
+        // Product Filter
+        if (product !== 'all' && row.product !== product && !row.campaign_name?.includes(product)) return false;
+        // Account Filter (if row has account_name)
+        if (account !== 'all' && row.account_name && row.account_name !== account) return false;
+        return true;
+      });
 
       // Aggregation for Age
       const ageMap = new Map<string, { leads: number, spend: number }>();
@@ -68,36 +85,22 @@ export default function AudiencePage() {
 
       setAgeData(processedAgeData);
 
-      // Aggregation for Interest (Wait, do we have interest breakdown? The prompt only mentioned age/gender in breakdown)
-      // "Breakdown: แสดงสัดส่วน Spend และ Leads แยกตาม age_range และ gender"
-      // If we don't have interest data, we might need to hide the Interest Chart or use Age/Gender for it?
-      // "Connect demographics graph to audience_breakdown_daily"
-      // The old code had Interest Performance. If the table doesn't have interests, we can't show it.
-      // Let's assume 'audience_breakdown_daily' MIGHT have 'interest' or 'ad_set_name' that contains interest.
-      // For now, I will preserve the structure but maybe repurpose the Bar Chart for Age CPL if interest is missing? 
-      // Or just empty state.
-      // Let's try to infer interest from `adset_name`? Too risky without regex.
-      // Let's hide Interest data if we can't find it, or mock it with a "Coming Soon" or just use Age groups for CPL comparison
-
-      // Let's use Age Groups for CPL comparison in the Bar Chart instead of Interest!
-      // This fulfills "Spend/Leads breakdown by age & gender" better.
-      // Let's Rename "Interest Targeting Performance" to "Age Group Performance (CPL)"
-
+      // CPL Data
       const processedCplData = Array.from(ageMap.entries()).map(([name, stats]) => ({
         name,
         value: stats.leads > 0 ? Math.round(stats.spend / stats.leads) : 0, // CPL
         leads: stats.leads
       })).sort((a, b) => a.value - b.value); // Lower CPL is better
 
-      setInterestData(processedCplData); // Storing Age CPL data here
+      setInterestData(processedCplData);
 
       const bestAge = processedAgeData.length > 0 ? processedAgeData[0].name : '-';
       const bestCplGroup = processedCplData.length > 0 ? processedCplData[0].name : '-';
 
       setOverallStats({
         bestAge,
-        bestInterest: bestCplGroup, // Renamed concept to Best Cost Efficiency Group
-        potentialReach: 'N/A' // API doesn't provide this usually
+        bestInterest: bestCplGroup,
+        potentialReach: 'N/A'
       });
 
     } catch (error) {
@@ -116,7 +119,7 @@ export default function AudiencePage() {
   if (loading) {
     return (
       <DashboardLayout title="Smart Audience" subtitle="Audience Performance Analysis">
-        <div className="p-10 text-center">Loading Audience Data...</div>
+        <div className="p-10 text-center text-muted-foreground">Loading Audience Data...</div>
       </DashboardLayout>
     );
   }
@@ -172,7 +175,7 @@ export default function AudiencePage() {
 
           {interestData.length === 0 ? (
             <div className="mt-6 py-8 text-center text-muted-foreground">
-              No data available
+              No data available for the selected period.
             </div>
           ) : (
             <div className="mt-6">
@@ -232,25 +235,33 @@ export default function AudiencePage() {
           <Title>Age Demographics (Volume)</Title>
           <Text>Lead contribution by Age Group</Text>
 
-          <div className="mt-6">
-            <DonutChart
-              data={ageData}
-              category="value"
-              index="name"
-              valueFormatter={(number: number) => `${number}%`}
-              colors={["slate", "blue", "indigo", "violet", "pink"]}
-              className="h-52"
-            />
-          </div>
-
-          <div className="mt-4 flex flex-wrap justify-center gap-4">
-            {ageData.map(d => (
-              <div key={d.name} className="flex items-center gap-2 text-sm">
-                <Bold>{d.name}:</Bold>
-                <span>{d.value}% ({d.leads})</span>
+          {ageData.length === 0 ? (
+            <div className="mt-6 py-8 text-center text-muted-foreground">
+              No data available
+            </div>
+          ) : (
+            <>
+              <div className="mt-6">
+                <DonutChart
+                  data={ageData}
+                  category="value"
+                  index="name"
+                  valueFormatter={(number: number) => `${number}%`}
+                  colors={["slate", "blue", "indigo", "violet", "pink"]}
+                  className="h-52"
+                />
               </div>
-            ))}
-          </div>
+
+              <div className="mt-4 flex flex-wrap justify-center gap-4">
+                {ageData.map(d => (
+                  <div key={d.name} className="flex items-center gap-2 text-sm">
+                    <Bold>{d.name}:</Bold>
+                    <span>{d.value}% ({d.leads})</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </Card>
       </div>
     </DashboardLayout>

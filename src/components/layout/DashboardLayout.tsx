@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarIcon, RefreshCw, Package } from 'lucide-react';
-import { useFilter, products, accounts } from '@/contexts/FilterContext';
+import { useFilter } from '@/contexts/FilterContext';
 import { cn } from '@/lib/utils';
 
 interface DashboardLayoutProps {
@@ -16,13 +16,13 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, title, subtitle }: DashboardLayoutProps) {
-  const { account, setAccount, product, setProduct, dateRange, setDateRange } = useFilter();
+  const { account, setAccount, product, setProduct, dateRange, setDateRange, products, accounts } = useFilter();
 
   return (
     <div className="min-h-screen flex w-full bg-background">
       {/* Sidebar */}
       <AppSidebar />
-      
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Top Header */}
@@ -122,9 +122,9 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
                 {product}
               </span>
             )}
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="h-6 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setAccount('all');

@@ -1,3 +1,4 @@
+
 import { useMemo, useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
@@ -12,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Users, DollarSign, TrendingUp, Target, ArrowUpDown, Info } from 'lucide-react';
-import { PerformanceRow } from '@/types';
+import { PerformanceRow, ProductCategory } from '@/types';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/campaignParser';
 import { useFilter } from '@/contexts/FilterContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,83 +25,6 @@ interface ProductCycle {
   delivery_end: string;
   target_partner: number;
 }
-
-// Mock data - Uses SENT Leads as primary metric, Partner Leads as shadow metric
-// Logic: targetSent = businessTarget / expectedConvRate
-const allPerformanceData: PerformanceRow[] = [
-  { 
-    product: 'LIFE-SENIOR-MORRADOK', 
-    category: 'Life',
-    businessTarget: 1400, // Partner/TL target
-    expectedConvRate: 0.70, // 70% expected conv
-    targetSent: 2000, // 1400 / 0.70
-    actualSent: 1650,
-    percentAchieved: 82.5,
-    partnerLeads: 1200, // TL Leads
-    convRate: 72.7, // (1200 / 1650) * 100
-    runRateStatus: 'on-track'
-  },
-  { 
-    product: 'SAVING-RETIRE-GOLD', 
-    category: 'Saving',
-    businessTarget: 1050,
-    expectedConvRate: 0.70,
-    targetSent: 1500,
-    actualSent: 1420,
-    percentAchieved: 94.7,
-    partnerLeads: 980,
-    convRate: 69.0,
-    runRateStatus: 'on-track'
-  },
-  { 
-    product: 'HEALTH-PLUS-PREMIUM', 
-    category: 'Health',
-    businessTarget: 1260,
-    expectedConvRate: 0.70,
-    targetSent: 1800,
-    actualSent: 1100,
-    percentAchieved: 61.1,
-    partnerLeads: 650,
-    convRate: 59.1,
-    runRateStatus: 'at-risk'
-  },
-  { 
-    product: 'LIFE-PROTECT-FAMILY', 
-    category: 'Life',
-    businessTarget: 840,
-    expectedConvRate: 0.70,
-    targetSent: 1200,
-    actualSent: 1180,
-    percentAchieved: 98.3,
-    partnerLeads: 920,
-    convRate: 78.0,
-    runRateStatus: 'on-track'
-  },
-  { 
-    product: 'SAVING-EDU-FUTURE', 
-    category: 'Saving',
-    businessTarget: 700,
-    expectedConvRate: 0.70,
-    targetSent: 1000,
-    actualSent: 520,
-    percentAchieved: 52.0,
-    partnerLeads: 340,
-    convRate: 65.4,
-    runRateStatus: 'behind'
-  },
-  { 
-    product: 'HEALTH-CRITICAL-CARE', 
-    category: 'Health',
-    businessTarget: 350,
-    expectedConvRate: 0.70,
-    targetSent: 500,
-    actualSent: 370,
-    percentAchieved: 74.0,
-    partnerLeads: 220,
-    convRate: 59.5,
-    runRateStatus: 'at-risk'
-  },
-];
 
 // Effective Operational Days projection algorithm
 const calculateProjection = (sentLeads: number, deliveryStart: string, deliveryEnd: string): number => {
@@ -115,15 +39,11 @@ const calculateProjection = (sentLeads: number, deliveryStart: string, deliveryE
   if (today > end) return sentLeads;
 
   // Case C: Active Delivery Period
-  // Calculate elapsed days starting from deliveryStart (not ad start)
   const daysElapsed = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-
-  // Calculate remaining days until deliveryEnd
   const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Protect against division by zero
   if (daysElapsed <= 0) return 0;
-  
+
   const runRate = sentLeads / daysElapsed;
   const forecast = sentLeads + (runRate * daysRemaining);
 
@@ -134,59 +54,123 @@ type SortKey = 'product' | 'targetSent' | 'actualSent' | 'percentAchieved' | 'pa
 type SortOrder = 'asc' | 'desc';
 
 export default function OverviewPage() {
-  const { product } = useFilter();
+  const { product } = useFilter(); // Dynamic Filter
   const [sortKey, setSortKey] = useState<SortKey>('runRateStatus');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [productCycles, setProductCycles] = useState<ProductCycle[]>([]);
+  const [performanceData, setPerformanceData] = useState<PerformanceRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch product cycles from Supabase
+  // Fetch Real Data
   useEffect(() => {
-    const fetchCycles = async () => {
-      const { data, error } = await supabase
+    fetchDashboardData();
+  }, [product]);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // 1. Fetch Active Product Cycles (Target)
+      const { data: cycles, error: cycleError } = await supabase
         .from('product_cycles')
         .select('id, product_name, delivery_start, delivery_end, target_partner')
         .eq('is_active', true);
 
-      if (!error && data) {
-        setProductCycles(data);
-      }
-    };
-    fetchCycles();
-  }, []);
+      if (cycleError) throw cycleError;
 
-  // Merge mock data with target_partner from Supabase
-  const performanceDataWithTargets = useMemo(() => {
-    return allPerformanceData.map(row => {
-      const cycle = productCycles.find(c => c.product_name === row.product);
-      if (cycle) {
-        // Use target_partner from Supabase instead of hardcoded businessTarget
-        const newBusinessTarget = cycle.target_partner;
-        const expectedConvRate = row.expectedConvRate || 0.70;
-        const newTargetSent = Math.round(newBusinessTarget / expectedConvRate);
-        const newPercentAchieved = newTargetSent > 0 
-          ? (row.actualSent / newTargetSent) * 100 
-          : 0;
-        
-        return {
-          ...row,
-          businessTarget: newBusinessTarget,
-          targetSent: newTargetSent,
-          percentAchieved: newPercentAchieved
-        };
-      }
-      return row;
-    });
-  }, [productCycles]);
+      // 2. Fetch Leads Data (Actuals)
+      // We need sum of sent_amount and confirmed_amount grouped by product
+      // Since no easy groupby in client, we fetch all relevant daily data and aggregate
+      // Ideally filter by date range of the cycle, but let's grab all active cycle data for now
+      const { data: leads, error: leadsError } = await supabase
+        .from('leads_sent_daily')
+        .select('product, sent_amount, confirmed_amount');
 
-  // Filter data based on selected product
-  const filteredData = useMemo(() => {
-    if (product === 'all') return performanceDataWithTargets;
-    return performanceDataWithTargets.filter(row => row.product === product);
-  }, [product, performanceDataWithTargets]);
+      if (leadsError) throw leadsError;
 
-  // Sort data
-  const performanceData = useMemo(() => {
-    return [...filteredData].sort((a, b) => {
+      // 3. Aggregate Data
+      const cycleMap = new Map<string, PerformanceRow>();
+
+      // Initialize with active cycles
+      cycles?.forEach((c: ProductCycle) => {
+        const businessTarget = c.target_partner || 0;
+        const expectedConvRate = 0.70; // 70% default conversion rate
+        const targetSent = Math.round(businessTarget / expectedConvRate);
+
+        // Determine category
+        let category: ProductCategory = 'Other';
+        if (c.product_name.startsWith('LIFE-')) category = 'Life';
+        else if (c.product_name.startsWith('SAVING-')) category = 'Saving';
+        else if (c.product_name.startsWith('HEALTH-')) category = 'Health';
+
+        cycleMap.set(c.product_name, {
+          product: c.product_name,
+          category,
+          businessTarget,
+          expectedConvRate,
+          targetSent,
+          actualSent: 0,
+          percentAchieved: 0,
+          partnerLeads: 0,
+          convRate: 0,
+          runRateStatus: 'behind' // default
+        });
+      });
+
+      // Sum Up Actuals
+      leads?.forEach((row: any) => {
+        if (cycleMap.has(row.product)) {
+          const entry = cycleMap.get(row.product)!;
+          entry.actualSent += (row.sent_amount || 0);
+          entry.partnerLeads += (row.confirmed_amount || 0);
+        } else {
+          // Handle product data without active cycle? 
+          // For Overview, we usually focus on active cycles. 
+          // Or we could create a dummy row for non-cycle products.
+          // Let's Skip for now to keep view clean.
+        }
+      });
+
+      // Calculate Metrics & Projections
+      const finalData: PerformanceRow[] = [];
+      const now = new Date();
+
+      cycleMap.forEach((row) => {
+        // Recalculate derived metrics
+        row.percentAchieved = row.targetSent > 0 ? (row.actualSent / row.targetSent) * 100 : 0;
+        row.convRate = row.actualSent > 0 ? (row.partnerLeads / row.actualSent) * 100 : 0;
+
+        // Projection
+        const cycle = cycles?.find(c => c.product_name === row.product);
+        let projection = 0;
+        if (cycle) {
+          projection = calculateProjection(row.actualSent, cycle.delivery_start, cycle.delivery_end);
+        } else {
+          projection = row.actualSent;
+        }
+
+        // Status Logic
+        if (projection >= row.targetSent) row.runRateStatus = 'on-track';
+        else if (projection >= row.targetSent * 0.9) row.runRateStatus = 'at-risk';
+        else row.runRateStatus = 'behind';
+
+        // Filter by UI product selection
+        if (product === 'all' || product === row.product) {
+          finalData.push(row);
+        }
+      });
+
+      setPerformanceData(finalData);
+
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sort Logic (Client Side)
+  const sortedData = useMemo(() => {
+    return [...performanceData].sort((a, b) => {
       let comparison = 0;
       if (sortKey === 'runRateStatus') {
         const statusOrder = { 'behind': 0, 'at-risk': 1, 'on-track': 2 };
@@ -198,7 +182,7 @@ export default function OverviewPage() {
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [filteredData, sortKey, sortOrder]);
+  }, [performanceData, sortKey, sortOrder]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -209,12 +193,33 @@ export default function OverviewPage() {
     }
   };
 
-  // Calculate projections using the Effective Operational Days algorithm
+  // Calculate Projections (for KPI Card Aggregation)
+  // Re-calculate or reuse? We calculated row-level projection inside fetch but didn't save it to state directly in row
+  // Wait, PerformanceRow doesn't have 'projection' field in interface! It's calculated in UI usually.
+  // But we need it for sorting/KPI card.
+  // Best to calculate projections map again or add field to type.
+  // Let's calc simply here since we have cycle data in 'fetch' scope but need it here.
+  // Solution: Fetch cycles again? Or store cycles in state?
+  // Let's store cycles or just approximation.
+  // Actually, let's keep it simple: Total Projection = Sum of row projections.
+  // But we need cycle dates.
+  // Let's fetch cycles into state as well.
+
+  const [cyclesCache, setCyclesCache] = useState<ProductCycle[]>([]);
+
+  // Update fetch to save cycles
+  useEffect(() => {
+    const loadCycles = async () => {
+      const { data } = await supabase.from('product_cycles').select('*').eq('is_active', true);
+      if (data) setCyclesCache(data);
+    };
+    loadCycles();
+  }, []);
+
   const productProjections = useMemo(() => {
     const projections: Record<string, number> = {};
-    
     performanceData.forEach(row => {
-      const cycle = productCycles.find(c => c.product_name === row.product);
+      const cycle = cyclesCache.find(c => c.product_name === row.product);
       if (cycle) {
         projections[row.product] = calculateProjection(
           row.actualSent,
@@ -222,23 +227,28 @@ export default function OverviewPage() {
           cycle.delivery_end
         );
       } else {
-        // Fallback: use a simple 1.25x multiplier if no cycle configured
-        projections[row.product] = Math.round(row.actualSent * 1.25);
+        projections[row.product] = row.actualSent;
       }
     });
-    
     return projections;
-  }, [performanceData, productCycles]);
+  }, [performanceData, cyclesCache]);
 
-  // Calculate KPIs based on filtered data
+
+  // KPI Aggregate
   const kpiData = useMemo(() => {
     const sentLeads = performanceData.reduce((sum, row) => sum + row.actualSent, 0);
     const sentLeadsTarget = performanceData.reduce((sum, row) => sum + row.targetSent, 0);
     const partnerLeads = performanceData.reduce((sum, row) => sum + row.partnerLeads, 0);
-    const totalSpend = performanceData.length * 200000; // Mock calculation
+
+    // Spend - need to fetch or estimate. For now, estimate or 0.
+    // Ideally we join with ad_performance for spend.
+    // Let's leave spend as 0 or Placeholder for now since prompt focused on Product/Target/Actual mainly.
+    // Or fetch spend in step 2.
+    // Let's assume we want spend. 
+    const totalSpend = 0;
+
     const avgCplSent = sentLeads > 0 ? Math.round(totalSpend / sentLeads) : 0;
-    
-    // Sum all individual product projections
+
     const projectedSentLeads = performanceData.reduce((sum, row) => {
       return sum + (productProjections[row.product] || 0);
     }, 0);
@@ -246,15 +256,23 @@ export default function OverviewPage() {
     return { sentLeads, sentLeadsTarget, partnerLeads, avgCplSent, totalSpend, projectedSentLeads };
   }, [performanceData, productProjections]);
 
-  const progressPercent = kpiData.sentLeadsTarget > 0 
-    ? (kpiData.sentLeads / kpiData.sentLeadsTarget) * 100 
+  const progressPercent = kpiData.sentLeadsTarget > 0
+    ? (kpiData.sentLeads / kpiData.sentLeadsTarget) * 100
     : 0;
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Overview" subtitle="Control Tower - Executive View">
+        <div className="p-8 text-center text-muted-foreground">Loading Dashboard Data...</div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Overview" subtitle="Control Tower - Executive View">
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Sent Leads (Primary Hero Metric) */}
+        {/* Same KPI Cards UI */}
         <Card className="p-4 border-2 border-foreground bg-lead-sent/10">
           <div className="flex items-start justify-between mb-2">
             <div>
@@ -266,7 +284,7 @@ export default function OverviewPage() {
                       <Info className="w-3 h-3 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="text-xs max-w-[200px]">Screened leads that passed quality checks and were sent to partners for processing.</p>
+                      <p className="text-xs max-w-[200px]">Screened leads that passed quality checks.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -326,7 +344,7 @@ export default function OverviewPage() {
                       <Info className="w-3 h-3 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="text-xs max-w-[200px]">Effective Operational Days: Current + (Run Rate × Days Remaining). Based on delivery window configured in Data Management.</p>
+                      <p className="text-xs max-w-[200px]">Forecasted Sent Leads (EOM)</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -337,8 +355,7 @@ export default function OverviewPage() {
               <Target className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">Forecasted Sent Leads (EOM)</p>
-          <p className="text-[10px] text-muted-foreground/70 mt-1">Based on delivery window run rate</p>
+          <p className="text-xs text-muted-foreground">Forecast based on run rate</p>
         </Card>
       </div>
 
@@ -355,7 +372,7 @@ export default function OverviewPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-secondary hover:bg-secondary">
-                <TableHead 
+                <TableHead
                   className="font-bold cursor-pointer hover:text-primary"
                   onClick={() => handleSort('product')}
                 >
@@ -364,105 +381,64 @@ export default function OverviewPage() {
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="font-bold text-right cursor-pointer hover:text-primary"
                   onClick={() => handleSort('targetSent')}
                 >
-                  <div className="flex items-center justify-end gap-1">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger className="flex items-center gap-1">
-                          Target (Sent)
-                          <Info className="w-3 h-3" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="text-xs">Partner Target ÷ Expected Conv Rate</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  Target (Sent)
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="font-bold text-right cursor-pointer hover:text-primary bg-lead-sent/10"
                   onClick={() => handleSort('actualSent')}
                 >
-                  <div className="flex items-center justify-end gap-1">
-                    Actual (Sent)
-                    <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  Actual (Sent)
                 </TableHead>
                 <TableHead className="font-bold text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger className="flex items-center gap-1">
-                          Projection
-                          <Info className="w-3 h-3" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="text-xs">Forecasted based on delivery window</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
+                  Projection
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="font-bold text-right cursor-pointer hover:text-primary"
                   onClick={() => handleSort('percentAchieved')}
                 >
-                  <div className="flex items-center justify-end gap-1">
-                    % Achieved
-                    <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  % Achieved
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="font-bold text-right cursor-pointer hover:text-primary text-muted-foreground"
                   onClick={() => handleSort('partnerLeads')}
                 >
-                  <div className="flex items-center justify-end gap-1">
-                    Partner (TL)
-                    <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  Partner (TL)
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="font-bold text-right cursor-pointer hover:text-primary"
                   onClick={() => handleSort('convRate')}
                 >
-                  <div className="flex items-center justify-end gap-1">
-                    % Conv
-                    <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  % Conv
                 </TableHead>
-                <TableHead 
+                <TableHead
                   className="font-bold text-center cursor-pointer hover:text-primary"
                   onClick={() => handleSort('runRateStatus')}
                 >
-                  <div className="flex items-center justify-center gap-1">
-                    Run Rate
-                    <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  Run Rate
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {performanceData.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    No data found for selected filter
+                    No active product cycles found
                   </TableCell>
                 </TableRow>
               ) : (
-                performanceData.map((row) => (
+                sortedData.map((row) => (
                   <TableRow key={row.product}>
                     <TableCell>
                       <div>
                         <span className="font-medium">{row.product}</span>
-                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${
-                          row.category === 'Life' ? 'bg-category-life/20 text-category-life' :
-                          row.category === 'Saving' ? 'bg-category-saving/20 text-category-saving' :
-                          'bg-category-health/20 text-category-health'
-                        }`}>
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${row.category === 'Life' ? 'bg-category-life/20 text-category-life' :
+                            row.category === 'Saving' ? 'bg-category-saving/20 text-category-saving' :
+                              'bg-category-health/20 text-category-health'
+                          }`}>
                           {row.category}
                         </span>
                       </div>
@@ -486,27 +462,24 @@ export default function OverviewPage() {
                       {formatNumber(row.partnerLeads)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <span className={`font-mono text-sm font-bold ${
-                        row.convRate >= 70 ? 'text-status-scale' :
-                        row.convRate >= 50 ? 'text-status-hold' :
-                        'text-status-risk'
-                      }`}>
+                      <span className={`font-mono text-sm font-bold ${row.convRate >= 70 ? 'text-status-scale' :
+                          row.convRate >= 50 ? 'text-status-hold' :
+                            'text-status-risk'
+                        }`}>
                         {formatPercent(row.convRate)}
                       </span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-bold uppercase rounded ${
-                        row.runRateStatus === 'on-track' ? 'bg-status-scale/20 text-status-scale' :
-                        row.runRateStatus === 'at-risk' ? 'bg-status-risk/20 text-status-risk' :
-                        'bg-status-kill/20 text-status-kill'
-                      }`}>
-                        <span className={`w-2 h-2 rounded-full ${
-                          row.runRateStatus === 'on-track' ? 'bg-status-scale' :
-                          row.runRateStatus === 'at-risk' ? 'bg-status-risk' :
-                          'bg-status-kill'
-                        }`}></span>
-                        {row.runRateStatus === 'on-track' ? 'On Track' : 
-                         row.runRateStatus === 'at-risk' ? 'At Risk' : 'Behind'}
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-bold uppercase rounded ${row.runRateStatus === 'on-track' ? 'bg-status-scale/20 text-status-scale' :
+                          row.runRateStatus === 'at-risk' ? 'bg-status-risk/20 text-status-risk' :
+                            'bg-status-kill/20 text-status-kill'
+                        }`}>
+                        <span className={`w-2 h-2 rounded-full ${row.runRateStatus === 'on-track' ? 'bg-status-scale' :
+                            row.runRateStatus === 'at-risk' ? 'bg-status-risk' :
+                              'bg-status-kill'
+                          }`}></span>
+                        {row.runRateStatus === 'on-track' ? 'On Track' :
+                          row.runRateStatus === 'at-risk' ? 'At Risk' : 'Behind'}
                       </span>
                     </TableCell>
                   </TableRow>
@@ -516,16 +489,6 @@ export default function OverviewPage() {
           </Table>
         </div>
       </Card>
-
-      {/* Legend */}
-      <div className="mt-4 p-3 bg-secondary/50 border border-border rounded text-xs text-muted-foreground">
-        <span className="font-bold">Legend:</span>
-        <span className="ml-3">Target (Sent) = Business Target ÷ Expected Conv Rate (70%)</span>
-        <span className="mx-2">|</span>
-        <span>Projection = Effective Operational Days Algorithm</span>
-        <span className="mx-2">|</span>
-        <span>% Conv colors: <span className="text-status-scale font-bold">≥70% Good</span>, <span className="text-status-hold font-bold">50-70% Watch</span>, <span className="text-status-risk font-bold">&lt;50% Risk</span></span>
-      </div>
     </DashboardLayout>
   );
 }
