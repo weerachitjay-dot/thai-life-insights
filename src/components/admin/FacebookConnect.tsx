@@ -1,245 +1,155 @@
-import { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Facebook, CheckCircle, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useEffect, useState } from 'react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
+import { Facebook, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { toast } from "sonner";
 
-// Declare Facebook SDK types
+// ประกาศ Type ให้ Window รู้จัก FB SDK
 declare global {
   interface Window {
     FB: any;
-    fbAsyncInit: any;
+    fbAsyncInit: () => void;
   }
 }
 
-interface TokenRecord {
-  id: number;
-  provider: string;
-  access_token: string;
-  token_type: string | null;
-  updated_at: string;
-}
-
-export function FacebookConnect() {
+export const FacebookConnect = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSdkLoaded, setIsSdkLoaded] = useState(false);
-  const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load Facebook SDK
+  // 1. ตรวจสอบสถานะเมื่อโหลดหน้าเว็บ
   useEffect(() => {
-    const loadSdk = async () => {
-      if (window.FB) {
-        setIsSdkLoaded(true);
-        return;
-      }
+    const checkConnection = async () => {
+      try {
+        const { data } = await supabase
+          .from('config_tokens')
+          .select('id')
+          .eq('provider', 'facebook')
+          .single();
 
-      window.fbAsyncInit = function() {
+        if (data) setIsConnected(true);
+      } catch (error) {
+        console.error("Error checking connection:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkConnection();
+  }, []);
+
+  // 2. โหลด Facebook SDK (แก้จุดที่ Error แล้ว ✅)
+  useEffect(() => {
+    // สร้างฟังก์ชันภายใน ไม่ใส่ async หน้า useEffect
+    const loadSdk = () => {
+      if (window.FB) return; // ถ้ามีแล้วไม่ต้องโหลดซ้ำ
+
+      window.fbAsyncInit = function () {
         window.FB.init({
-          appId: 'YOUR_PLACEHOLDER_APP_ID', // Replace with your Facebook App ID
+          appId: '605018742544860',
           cookie: true,
           xfbml: true,
           version: 'v19.0'
         });
-        setIsSdkLoaded(true);
       };
 
-      // Load the SDK asynchronously
-      const script = document.createElement('script');
-      script.src = 'https://connect.facebook.net/en_US/sdk.js';
-      script.async = true;
-      script.defer = true;
-      document.body.appendChild(script);
+      // Load Script
+      (function (d, s, id) {
+        var js, fjs = d.getElementsByTagName(s)[0];
+        if (d.getElementById(id)) return;
+        js = d.createElement(s) as HTMLScriptElement;
+        js.id = id;
+        js.src = "https://connect.facebook.net/en_US/sdk.js";
+        fjs.parentNode?.insertBefore(js, fjs);
+      }(document, 'script', 'facebook-jssdk'));
     };
 
     loadSdk();
-
-    return () => {
-      // Cleanup if needed
-    };
   }, []);
 
-  // Check connection status on mount
-  useEffect(() => {
-    checkConnectionStatus();
-  }, []);
-
-  const checkConnectionStatus = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('config_tokens')
-        .select('*')
-        .eq('provider', 'facebook')
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error checking connection status:', error);
-        return;
-      }
-
-      if (data) {
-        setIsConnected(true);
-        setLastSynced(formatDate(data.updated_at));
-      }
-    } catch (err) {
-      console.error('Error:', err);
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} min ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)} hours ago`;
-    return date.toLocaleDateString();
-  };
-
-  const handleConnect = () => {
-    if (!isSdkLoaded || !window.FB) {
-      toast({
-        title: 'SDK not loaded',
-        description: 'Please wait for Facebook SDK to load and try again.',
-        variant: 'destructive',
-      });
+  // ฟังก์ชัน Login
+  const handleLogin = () => {
+    if (!window.FB) {
+      toast.error("Facebook SDK not loaded yet. Please refresh.");
       return;
     }
 
     setIsLoading(true);
+    window.FB.login(async function (response: any) {
+      if (response.authResponse) {
+        const accessToken = response.authResponse.accessToken;
 
-    window.FB.login(
-      async (response: any) => {
-        if (response.authResponse) {
-          const accessToken = response.authResponse.accessToken;
-          
-          try {
-            const { error } = await supabase
-              .from('config_tokens')
-              .upsert(
-                {
-                  provider: 'facebook',
-                  access_token: accessToken,
-                  token_type: 'short_lived',
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'provider' }
-              );
+        // บันทึกลง Supabase
+        const { error } = await supabase
+          .from('config_tokens')
+          .upsert({
+            provider: 'facebook',
+            access_token: accessToken,
+            token_type: 'short_lived',
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'provider' });
 
-            if (error) {
-              throw error;
-            }
-
-            setIsConnected(true);
-            setLastSynced('Just now');
-            toast({
-              title: 'Connected successfully',
-              description: 'Your Meta Ads account has been connected.',
-            });
-          } catch (err: any) {
-            console.error('Error saving token:', err);
-            toast({
-              title: 'Connection failed',
-              description: err.message || 'Failed to save access token.',
-              variant: 'destructive',
-            });
-          }
+        if (error) {
+          console.error("Supabase Error:", error);
+          toast.error("Failed to save token.");
         } else {
-          toast({
-            title: 'Login cancelled',
-            description: 'Facebook login was cancelled or failed.',
-            variant: 'destructive',
-          });
+          setIsConnected(true);
+          toast.success("Facebook Connected Successfully!");
         }
-        setIsLoading(false);
-      },
-      { scope: 'public_profile,email,ads_read,read_insights' }
-    );
+      } else {
+        toast.error("User cancelled login or did not fully authorize.");
+      }
+      setIsLoading(false);
+    }, { scope: 'public_profile,email,ads_read,read_insights' });
   };
 
   const handleDisconnect = async () => {
     setIsLoading(true);
-    
-    try {
-      const { error } = await supabase
-        .from('config_tokens')
-        .delete()
-        .eq('provider', 'facebook');
+    const { error } = await supabase
+      .from('config_tokens')
+      .delete()
+      .eq('provider', 'facebook');
 
-      if (error) {
-        throw error;
-      }
-
+    if (!error) {
       setIsConnected(false);
-      setLastSynced(null);
-      toast({
-        title: 'Disconnected',
-        description: 'Meta Ads account has been disconnected.',
-      });
-    } catch (err: any) {
-      console.error('Error disconnecting:', err);
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to disconnect.',
-        variant: 'destructive',
-      });
+      toast.success("Disconnected from Facebook.");
     }
-    
     setIsLoading(false);
   };
 
   return (
-    <Card className="p-6">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-            <Facebook className="w-6 h-6 text-blue-500" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-foreground">Meta Ads Platform</h3>
-            <p className="text-sm text-muted-foreground">
-              {isConnected 
-                ? `Last synced: ${lastSynced}` 
-                : 'Connect to sync ad performance data.'}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {isConnected && (
-            <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
-              <CheckCircle className="w-3 h-3" />
-              Connected
-            </Badge>
-          )}
-          
-          {isConnected ? (
-            <Button
-              variant="outline"
-              onClick={handleDisconnect}
-              disabled={isLoading}
-              className="text-destructive border-destructive hover:bg-destructive/10"
-            >
-              {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Facebook className="h-5 w-5 text-blue-600" />
+          Meta Ads Platform
+        </CardTitle>
+        <CardDescription>
+          Connect to sync ad performance data automatically.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Button disabled className="w-full">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Loading...
+          </Button>
+        ) : isConnected ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 text-green-600 bg-green-50 p-3 rounded-md">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-medium">System Connected</span>
+            </div>
+            <Button variant="outline" onClick={handleDisconnect} className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">
               Disconnect
             </Button>
-          ) : (
-            <Button
-              onClick={handleConnect}
-              disabled={isLoading || !isSdkLoaded}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Connect with Facebook
-            </Button>
-          )}
-        </div>
-      </div>
+          </div>
+        ) : (
+          <Button onClick={handleLogin} className="w-full bg-[#1877F2] hover:bg-[#166fe5]">
+            Connect with Facebook
+          </Button>
+        )}
+      </CardContent>
     </Card>
   );
-}
+};
