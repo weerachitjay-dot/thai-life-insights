@@ -31,6 +31,7 @@ export interface OverviewKpiData {
   avgCplSent: number;
   totalSpend: number;
   projectedSentLeads: number;
+  reach: number;
 }
 
 export interface PerformanceRow {

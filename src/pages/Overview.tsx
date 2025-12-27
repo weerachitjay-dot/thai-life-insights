@@ -239,11 +239,14 @@ export default function OverviewPage() {
     // Avg CPL (Sent) = Total Spend / Total Sent Leads
     const avgCplSent = sentLeads > 0 ? Math.round(totalSpend / sentLeads) : 0;
 
+    // Total Reach
+    const reach = filteredMetaData.reduce((sum, row) => sum + (row.reach || 0), 0);
+
     const projectedSentLeads = performanceData.reduce((sum, row) => {
       return sum + (productProjections[row.product] || 0);
     }, 0);
 
-    return { sentLeads, sentLeadsTarget, partnerLeads, avgCplSent, totalSpend, projectedSentLeads };
+    return { sentLeads, sentLeadsTarget, partnerLeads, avgCplSent, totalSpend, projectedSentLeads, reach };
   }, [performanceData, productProjections, metaData, product]);
 
   const progressPercent = kpiData.sentLeadsTarget > 0
@@ -262,7 +265,21 @@ export default function OverviewPage() {
     <DashboardLayout title="Overview" subtitle="Control Tower - Executive View">
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Same KPI Cards UI */}
+        {/* Reach */}
+        <Card className="p-4 border-2 border-foreground">
+          <div className="flex items-start justify-between mb-2">
+            <div>
+              <p className="text-xs font-bold uppercase text-muted-foreground">Reach</p>
+              <p className="text-3xl font-bold text-foreground">{formatNumber(kpiData.reach)}</p>
+            </div>
+            <div className="p-2 bg-secondary">
+              <Users className="w-5 h-5" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Total Unique Reach</p>
+        </Card>
+
+        {/* Sent Leads (Qualified) */}
         <Card className="p-4 border-2 border-foreground bg-lead-sent/10">
           <div className="flex items-start justify-between mb-2">
             <div>

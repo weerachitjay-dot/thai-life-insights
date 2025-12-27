@@ -8,6 +8,14 @@ export interface DateRange {
     to: Date;
 }
 
+export interface ProductPerformance {
+    product_code: string;
+    spend: number;
+    reach: number;
+    meta_leads: number;
+    date: string;
+}
+
 export const useProductPerformance = (dateRange: DateRange | undefined) => {
     return useQuery({
         queryKey: ['product_performance', dateRange],
@@ -22,11 +30,25 @@ export const useProductPerformance = (dateRange: DateRange | undefined) => {
                 .order('date', { ascending: false });
 
             if (error) throw error;
-            return data;
+            return data as unknown as ProductPerformance[];
         },
         enabled: !!dateRange?.from && !!dateRange?.to,
     });
 };
+
+export interface AdPerformance {
+    ad_id: string;
+    image_url: string;
+    spend: number;
+    reach: number;
+    meta_leads: number;
+    date: string;
+    ad_name: string;
+    clicks: number;
+    impressions: number;
+    status: string;
+    product_code: string;
+}
 
 export const useAdPerformance = (dateRange: DateRange | undefined) => {
     return useQuery({
@@ -42,11 +64,20 @@ export const useAdPerformance = (dateRange: DateRange | undefined) => {
                 .order('spend', { ascending: false }); // High spend ads first
 
             if (error) throw error;
-            return data;
+            return data as unknown as AdPerformance[];
         },
         enabled: !!dateRange?.from && !!dateRange?.to,
     });
 };
+
+export interface AudienceBreakdown {
+    product_code: string;
+    age_range: string;
+    gender: string;
+    meta_leads: number;
+    spend: number;
+    date: string;
+}
 
 export const useAudienceBreakdown = (dateRange: DateRange | undefined) => {
     return useQuery({
@@ -61,7 +92,7 @@ export const useAudienceBreakdown = (dateRange: DateRange | undefined) => {
                 .lte('date', format(dateRange.to, 'yyyy-MM-dd'));
 
             if (error) throw error;
-            return data;
+            return data as unknown as AudienceBreakdown[];
         },
         enabled: !!dateRange?.from && !!dateRange?.to,
     });
