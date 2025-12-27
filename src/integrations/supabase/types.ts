@@ -46,7 +46,7 @@ export type Database = {
           delivery_start: string
           id: string
           is_active: boolean
-          product_name: string
+          product_code: string
           target_partner: number
           updated_at: string
         }
@@ -57,7 +57,7 @@ export type Database = {
           delivery_start: string
           id?: string
           is_active?: boolean
-          product_name: string
+          product_code: string
           target_partner?: number
           updated_at?: string
         }
@@ -68,7 +68,7 @@ export type Database = {
           delivery_start?: string
           id?: string
           is_active?: boolean
-          product_name?: string
+          product_code?: string
           target_partner?: number
           updated_at?: string
         }

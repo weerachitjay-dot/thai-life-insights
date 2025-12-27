@@ -20,7 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface ProductCycle {
   id: string;
-  product_name: string;
+  product_code: string;
   delivery_start: string;
   delivery_end: string;
   target_partner: number;
@@ -72,7 +72,7 @@ export default function OverviewPage() {
       // 1. Fetch Active Product Cycles (Target)
       const { data: cycles, error: cycleError } = await supabase
         .from('product_cycles')
-        .select('id, product_name, delivery_start, delivery_end, target_partner')
+        .select('id, product_code, delivery_start, delivery_end, target_partner')
         .eq('is_active', true);
 
       if (cycleError) throw cycleError;
@@ -98,12 +98,12 @@ export default function OverviewPage() {
 
         // Determine category
         let category: ProductCategory = 'Other';
-        if (c.product_name.startsWith('LIFE-')) category = 'Life';
-        else if (c.product_name.startsWith('SAVING-')) category = 'Saving';
-        else if (c.product_name.startsWith('HEALTH-')) category = 'Health';
+        if (c.product_code.startsWith('LIFE-')) category = 'Life';
+        else if (c.product_code.startsWith('SAVING-')) category = 'Saving';
+        else if (c.product_code.startsWith('HEALTH-')) category = 'Health';
 
-        cycleMap.set(c.product_name, {
-          product: c.product_name,
+        cycleMap.set(c.product_code, {
+          product: c.product_code,
           category,
           businessTarget,
           expectedConvRate,
@@ -140,7 +140,7 @@ export default function OverviewPage() {
         row.convRate = row.actualSent > 0 ? (row.partnerLeads / row.actualSent) * 100 : 0;
 
         // Projection
-        const cycle = cycles?.find(c => c.product_name === row.product);
+        const cycle = cycles?.find(c => c.product_code === row.product);
         let projection = 0;
         if (cycle) {
           projection = calculateProjection(row.actualSent, cycle.delivery_start, cycle.delivery_end);
@@ -219,7 +219,7 @@ export default function OverviewPage() {
   const productProjections = useMemo(() => {
     const projections: Record<string, number> = {};
     performanceData.forEach(row => {
-      const cycle = cyclesCache.find(c => c.product_name === row.product);
+      const cycle = cyclesCache.find(c => c.product_code === row.product);
       if (cycle) {
         projections[row.product] = calculateProjection(
           row.actualSent,
