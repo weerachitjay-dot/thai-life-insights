@@ -103,8 +103,10 @@ export function ProductSettingsTable() {
                 description: 'Product settings updated successfully.',
             });
 
-            setProducts(products.map(p => p.product_code === code ? { ...p, ...editForm } as ProductSetting : p));
+            // Refresh from Supabase to get actual saved data
+            await fetchProducts();
             setEditingCode(null);
+            setEditForm({});
         } catch (error) {
             console.error('Error updating product settings:', error);
             toast({
