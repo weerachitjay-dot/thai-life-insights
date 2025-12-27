@@ -6,12 +6,13 @@ import { DonutChart, Title, Text, Bold } from '@tremor/react';
 import { Users, Target, Zap } from 'lucide-react';
 import { useFilter } from '@/contexts/FilterContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
-import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { useAudienceBreakdown } from '@/hooks/useFacebookAds';
 
 export default function AudiencePage() {
-  const { product, dateRange, account } = useFilter();
-  const [loading, setLoading] = useState(true);
+  const { product, dateRange } = useFilter();
+
+  // Use new hook
+  const { data: audienceData, isLoading } = useAudienceBreakdown(dateRange);
 
   // Real Data State
   const [ageData, setAgeData] = useState<{ name: string, value: number, leads: number, spend: number }[]>([]);
@@ -19,58 +20,33 @@ export default function AudiencePage() {
   const [overallStats, setOverallStats] = useState({ bestAge: '-', bestInterest: '-', potentialReach: '2.4M' });
 
   useEffect(() => {
-    fetchAudienceData();
-  }, [product, dateRange, account]);
+    processAudienceData();
+  }, [product, audienceData]);
 
-  const fetchAudienceData = async () => {
+  const processAudienceData = async () => {
     try {
-      setLoading(true);
-
-      const fromDate = dateRange.from.toISOString().split('T')[0];
-      const toDate = dateRange.to.toISOString().split('T')[0];
-
-      let query = supabase
-        .from('audience_breakdown_daily')
-        .select('*')
-        .gte('date', fromDate)
-        .lte('date', toDate);
-
-      // Filter by product if selected 
-      // Assuming 'product' column exists. If strictly not, we might need pattern match or just client filter.
-      // But typically we should have product column or link.
-      // previous code used client filter. Let's try to assume 'product' column exists for efficiency,
-      // but fallback to client side if needed (safer given previous uncertainty).
-      // actually, let's Stick to strictly client-filtering for product if column isn't guaranteed, 
-      // OR better, Assume it exists like other tables.
-      // Let's filter by product in query if possible. 
-      // Based on previous files, we assumed 'product' column in other tables.
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      if (!data) {
+      if (!audienceData) {
         setAgeData([]);
         setInterestData([]);
         return;
       }
 
       // Filter in memory for product to be safe / handle 'all'
-      const filteredData = data.filter((row: any) => {
+      const filteredData = audienceData.filter((row) => {
         // Product Filter
-        if (product !== 'all' && row.product_code !== product && !row.campaign_name?.includes(product)) return false;
-        // Account Filter (if row has account_name)
-        if (account !== 'all' && row.account_name && row.account_name !== account) return false;
+        if (product !== 'all' && row.product_code !== product) return false;
+        // Account filtering removed or assumed handled by backend/not present in this table view yet.
         return true;
       });
 
       // Aggregation for Age
       const ageMap = new Map<string, { leads: number, spend: number }>();
 
-      filteredData.forEach((row: any) => {
+      filteredData.forEach((row) => {
         const age = row.age_range || 'Unknown';
         if (!ageMap.has(age)) ageMap.set(age, { leads: 0, spend: 0 });
         const entry = ageMap.get(age)!;
-        entry.leads += (row.leads || 0);
+        entry.leads += (row.meta_leads || 0); // Note: Changed to meta_leads per schema
         entry.spend += (row.spend || 0);
       });
 
@@ -100,13 +76,11 @@ export default function AudiencePage() {
       setOverallStats({
         bestAge,
         bestInterest: bestCplGroup,
-        potentialReach: 'N/A'
+        potentialReach: 'N/A' // Not available in breakdowns
       });
 
     } catch (error) {
-      console.error("Error fetching audience data", error);
-    } finally {
-      setLoading(false);
+      console.error("Error processing audience data", error);
     }
   };
 
@@ -116,7 +90,7 @@ export default function AudiencePage() {
     return totalCpl / interestData.length;
   }, [interestData]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <DashboardLayout title="Smart Audience" subtitle="Audience Performance Analysis">
         <div className="p-10 text-center text-muted-foreground">Loading Audience Data...</div>

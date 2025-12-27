@@ -17,6 +17,7 @@ import { PerformanceRow, ProductCategory } from '@/types';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/campaignParser';
 import { useFilter } from '@/contexts/FilterContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useProductPerformance } from '@/hooks/useFacebookAds';
 
 interface ProductCycle {
   id: string;
@@ -54,16 +55,19 @@ type SortKey = 'product' | 'targetSent' | 'actualSent' | 'percentAchieved' | 'pa
 type SortOrder = 'asc' | 'desc';
 
 export default function OverviewPage() {
-  const { product } = useFilter(); // Dynamic Filter
+  const { product, dateRange } = useFilter(); // Dynamic Filter
   const [sortKey, setSortKey] = useState<SortKey>('runRateStatus');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [performanceData, setPerformanceData] = useState<PerformanceRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch Real Data
+  // Hook for Meta Data (Spend, Meta Leads)
+  const { data: metaData } = useProductPerformance(dateRange);
+
+  // Fetch Real Data (Cycles & Sent Leads)
   useEffect(() => {
     fetchDashboardData();
-  }, [product]);
+  }, [product, metaData]); // Re-run when metaData changes too
 
   const fetchDashboardData = async () => {
     try {
@@ -77,10 +81,7 @@ export default function OverviewPage() {
 
       if (cycleError) throw cycleError;
 
-      // 2. Fetch Leads Data (Actuals)
-      // We need sum of sent_amount and confirmed_amount grouped by product
-      // Since no easy groupby in client, we fetch all relevant daily data and aggregate
-      // Ideally filter by date range of the cycle, but let's grab all active cycle data for now
+      // 2. Fetch Leads Data (Actuals - Sent)
       const { data: leads, error: leadsError } = await supabase
         .from('leads_sent_daily')
         .select('product_code, sent_all_amount, confirmed_amount');
@@ -112,27 +113,25 @@ export default function OverviewPage() {
           percentAchieved: 0,
           partnerLeads: 0,
           convRate: 0,
-          runRateStatus: 'behind' // default
+          runRateStatus: 'behind', // default
+          // Add Spend field to PerformanceRow type locally or in map? 
+          // PerformanceRow doesn't have spend in original types, but we calculate aggregated metrics later. 
+          // We'll store it in a separate map or just use it for overall KPI.
+          // But to be precise, let's keep it here if we want to add per-product spend later.
         });
       });
 
-      // Sum Up Actuals
+      // Sum Up Actuals (Sent Leads)
       leads?.forEach((row: any) => {
         if (cycleMap.has(row.product_code)) {
           const entry = cycleMap.get(row.product_code)!;
           entry.actualSent += (row.sent_all_amount || 0);
           entry.partnerLeads += (row.confirmed_amount || 0);
-        } else {
-          // Handle product data without active cycle? 
-          // For Overview, we usually focus on active cycles. 
-          // Or we could create a dummy row for non-cycle products.
-          // Let's Skip for now to keep view clean.
         }
       });
 
       // Calculate Metrics & Projections
       const finalData: PerformanceRow[] = [];
-      const now = new Date();
 
       cycleMap.forEach((row) => {
         // Recalculate derived metrics
@@ -193,18 +192,6 @@ export default function OverviewPage() {
     }
   };
 
-  // Calculate Projections (for KPI Card Aggregation)
-  // Re-calculate or reuse? We calculated row-level projection inside fetch but didn't save it to state directly in row
-  // Wait, PerformanceRow doesn't have 'projection' field in interface! It's calculated in UI usually.
-  // But we need it for sorting/KPI card.
-  // Best to calculate projections map again or add field to type.
-  // Let's calc simply here since we have cycle data in 'fetch' scope but need it here.
-  // Solution: Fetch cycles again? Or store cycles in state?
-  // Let's store cycles or just approximation.
-  // Actually, let's keep it simple: Total Projection = Sum of row projections.
-  // But we need cycle dates.
-  // Let's fetch cycles into state as well.
-
   const [cyclesCache, setCyclesCache] = useState<ProductCycle[]>([]);
 
   // Update fetch to save cycles
@@ -240,13 +227,16 @@ export default function OverviewPage() {
     const sentLeadsTarget = performanceData.reduce((sum, row) => sum + row.targetSent, 0);
     const partnerLeads = performanceData.reduce((sum, row) => sum + row.partnerLeads, 0);
 
-    // Spend - need to fetch or estimate. For now, estimate or 0.
-    // Ideally we join with ad_performance for spend.
-    // Let's leave spend as 0 or Placeholder for now since prompt focused on Product/Target/Actual mainly.
-    // Or fetch spend in step 2.
-    // Let's assume we want spend. 
-    const totalSpend = 0;
+    // Filter Meta Data by Product if needed
+    // metaData contains raw daily stats.
+    const filteredMetaData = metaData?.filter(row => {
+      if (product === 'all') return true;
+      return row.product_code === product;
+    }) || [];
 
+    const totalSpend = filteredMetaData.reduce((sum, row) => sum + (row.spend || 0), 0);
+
+    // Avg CPL (Sent) = Total Spend / Total Sent Leads
     const avgCplSent = sentLeads > 0 ? Math.round(totalSpend / sentLeads) : 0;
 
     const projectedSentLeads = performanceData.reduce((sum, row) => {
@@ -254,7 +244,7 @@ export default function OverviewPage() {
     }, 0);
 
     return { sentLeads, sentLeadsTarget, partnerLeads, avgCplSent, totalSpend, projectedSentLeads };
-  }, [performanceData, productProjections]);
+  }, [performanceData, productProjections, metaData, product]);
 
   const progressPercent = kpiData.sentLeadsTarget > 0
     ? (kpiData.sentLeads / kpiData.sentLeadsTarget) * 100

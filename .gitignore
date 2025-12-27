@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local data storage (ignored by git)
+local_data/
+
+# Environment variables
+.env

@@ -5,53 +5,50 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertTriangle, Image as ImageIcon, LayoutGrid, List, Play } from 'lucide-react'; // Image alias to avoid conflict
+import { AlertTriangle, Image as ImageIcon, LayoutGrid, List, Play } from 'lucide-react';
 import { CreativeData, CampaignStatus } from '@/types';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/campaignParser';
-import { supabase } from '@/integrations/supabase/client';
+import { useFilter } from '@/contexts/FilterContext';
+import { useAdPerformance } from '@/hooks/useFacebookAds';
 
 export default function CreativePage() {
+  const { product, dateRange } = useFilter();
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [creativeData, setCreativeData] = useState<CreativeData[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Use Hook
+  const { data: ads, isLoading: loading } = useAdPerformance(dateRange);
 
   useEffect(() => {
-    fetchCreativeData();
-  }, []);
+    processCreativeData();
+  }, [product, ads]);
 
-  const fetchCreativeData = async () => {
+  const processCreativeData = async () => {
     try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('ad_performance_daily')
-        .select('*'); // We will aggregate locally
-
-      if (error) throw error;
-
-      if (!data) {
+      if (!ads) {
         setCreativeData([]);
         return;
       }
 
-      // Aggregate by Ad Name (or ID if available and consistent)
+      // Aggregate by Ad Name (or ID)
       const adMap = new Map<string, CreativeData>();
 
-      data.forEach((row: any) => {
-        // Simple hashing or keying by ad_name. 
-        // Ideally we use ad_id, but prompt says "Creative Analysis", often grouped by name in this project context.
-        // Let's use ad_name as the key.
-        const key = row.ad_name;
+      ads.forEach((row) => {
+        // Filter by Product
+        if (product !== 'all' && row.product_code !== product) return;
+
+        const key = row.ad_name || 'Unknown Ad';
 
         if (!adMap.has(key)) {
           adMap.set(key, {
-            id: row.ad_id || key, // Fallback to name if ID missing
+            id: row.ad_id || key,
             thumbnail: row.image_url || '',
-            name: row.ad_name,
+            name: row.ad_name || 'Unknown',
             spend: 0,
             metaLeads: 0,
             cplMeta: 0,
-            ctr: 0, // Weighted average needed or sum(clicks)/sum(impressions)
-            frequency: 0, // Max or Avg? Usually per day it's ~1.x, cumulative is different. Let's use avg for now or max.
+            ctr: 0,
+            frequency: 1.0,
             status: (row.status as CampaignStatus) || 'UNKNOWN',
             fatigueAlert: false,
             // Temporary storage for calc
@@ -63,12 +60,8 @@ export default function CreativePage() {
 
         const ad = adMap.get(key)!;
         ad.spend += (row.spend || 0);
-        ad.metaLeads += (row.leads || 0);
+        ad.metaLeads += (row.meta_leads || 0);
 
-        // For CTR & Freq
-        // Assuming row has clicks/impressions. If not, we might have to skip.
-        // The DB schema from previous turn implied standard fields.
-        // Let's assume standard meta fields exist: clicks, impressions.
         const clicks = row.clicks || 0;
         const impressions = row.impressions || 0;
 
@@ -76,7 +69,7 @@ export default function CreativePage() {
         (ad as any)._impressions += impressions;
         (ad as any)._days += 1;
 
-        // Update thumbnail if missing (sometimes first row has it)
+        // Update thumbnail if missing
         if (!ad.thumbnail && row.image_url) {
           ad.thumbnail = row.image_url;
         }
@@ -85,16 +78,9 @@ export default function CreativePage() {
       const metrics: CreativeData[] = Array.from(adMap.values()).map((ad: any) => {
         const cpl = ad.metaLeads > 0 ? ad.spend / ad.metaLeads : 0;
         const ctr = ad._impressions > 0 ? (ad._clicks / ad._impressions) * 100 : 0;
+        const frequency = 1.0; // Placeholder
 
-        // Logic for Status/Alerts could be more complex, but using simple heuristics or last status
-        // Fatigue: High Frequency (> 2.5) AND Low CTR (< 0.8%) - Simplified rule
-        // We lack true frequency (reach/impressions) per person, but simple impressions/reach if we had reach.
-        // Without reach, we can't calc frequency accurately agg over days. 
-        // Let's placeholder frequency or remove it if not available. 
-        // Or assume data has frequency field? If daily frequency, avg it.
-        const frequency = 1.0; // Placeholder as we don't have unique reach across days
-
-        const fatigueAlert = ctr < 0.8 && ad.spend > 5000; // heuristic
+        const fatigueAlert = ctr < 0.8 && ad.spend > 5000;
 
         return {
           id: ad.id,
@@ -105,8 +91,7 @@ export default function CreativePage() {
           cplMeta: cpl,
           ctr: ctr,
           frequency: frequency,
-          status: ad.status, // This takes the status from the LAST row processed (most recent if sorted?) - Map iteration order is insertion order. 
-          // Ideally we sort data by date before processing.
+          status: ad.status,
           fatigueAlert: fatigueAlert
         };
       });
@@ -117,9 +102,7 @@ export default function CreativePage() {
       setCreativeData(metrics);
 
     } catch (error) {
-      console.error('Error fetching creatives:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error processing creatives:', error);
     }
   };
 
@@ -206,9 +189,9 @@ export default function CreativePage() {
                 <div className="flex items-start justify-between mb-3">
                   <p className="font-medium text-sm truncate flex-1" title={creative.name}>{creative.name}</p>
                   <Badge className={`ml-2 ${creative.status === 'SCALE' ? 'bg-status-scale text-status-scale-foreground' :
-                      creative.status === 'HOLD' ? 'bg-status-hold text-status-hold-foreground' :
-                        creative.status === 'RISK' ? 'bg-status-risk text-status-risk-foreground' :
-                          'bg-status-kill text-status-kill-foreground'
+                    creative.status === 'HOLD' ? 'bg-status-hold text-status-hold-foreground' :
+                      creative.status === 'RISK' ? 'bg-status-risk text-status-risk-foreground' :
+                        'bg-status-kill text-status-kill-foreground'
                     }`}>
                     {creative.status}
                   </Badge>
@@ -275,9 +258,9 @@ export default function CreativePage() {
                   <TableCell className="text-right font-mono">{formatCurrency(creative.cplMeta)}</TableCell>
                   <TableCell className="text-center">
                     <Badge className={`${creative.status === 'SCALE' ? 'bg-status-scale text-status-scale-foreground' :
-                        creative.status === 'HOLD' ? 'bg-status-hold text-status-hold-foreground' :
-                          creative.status === 'RISK' ? 'bg-status-risk text-status-risk-foreground' :
-                            'bg-status-kill text-status-kill-foreground'
+                      creative.status === 'HOLD' ? 'bg-status-hold text-status-hold-foreground' :
+                        creative.status === 'RISK' ? 'bg-status-risk text-status-risk-foreground' :
+                          'bg-status-kill text-status-kill-foreground'
                       }`}>
                       {creative.status}
                     </Badge>
