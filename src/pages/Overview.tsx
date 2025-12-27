@@ -83,7 +83,7 @@ export default function OverviewPage() {
       // Ideally filter by date range of the cycle, but let's grab all active cycle data for now
       const { data: leads, error: leadsError } = await supabase
         .from('leads_sent_daily')
-        .select('product, sent_amount, confirmed_amount');
+        .select('product_code, sent_all_amount, confirmed_amount');
 
       if (leadsError) throw leadsError;
 
@@ -118,9 +118,9 @@ export default function OverviewPage() {
 
       // Sum Up Actuals
       leads?.forEach((row: any) => {
-        if (cycleMap.has(row.product)) {
-          const entry = cycleMap.get(row.product)!;
-          entry.actualSent += (row.sent_amount || 0);
+        if (cycleMap.has(row.product_code)) {
+          const entry = cycleMap.get(row.product_code)!;
+          entry.actualSent += (row.sent_all_amount || 0);
           entry.partnerLeads += (row.confirmed_amount || 0);
         } else {
           // Handle product data without active cycle? 
@@ -436,8 +436,8 @@ export default function OverviewPage() {
                       <div>
                         <span className="font-medium">{row.product}</span>
                         <span className={`ml-2 text-xs px-2 py-0.5 rounded ${row.category === 'Life' ? 'bg-category-life/20 text-category-life' :
-                            row.category === 'Saving' ? 'bg-category-saving/20 text-category-saving' :
-                              'bg-category-health/20 text-category-health'
+                          row.category === 'Saving' ? 'bg-category-saving/20 text-category-saving' :
+                            'bg-category-health/20 text-category-health'
                           }`}>
                           {row.category}
                         </span>
@@ -463,20 +463,20 @@ export default function OverviewPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={`font-mono text-sm font-bold ${row.convRate >= 70 ? 'text-status-scale' :
-                          row.convRate >= 50 ? 'text-status-hold' :
-                            'text-status-risk'
+                        row.convRate >= 50 ? 'text-status-hold' :
+                          'text-status-risk'
                         }`}>
                         {formatPercent(row.convRate)}
                       </span>
                     </TableCell>
                     <TableCell className="text-center">
                       <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-bold uppercase rounded ${row.runRateStatus === 'on-track' ? 'bg-status-scale/20 text-status-scale' :
-                          row.runRateStatus === 'at-risk' ? 'bg-status-risk/20 text-status-risk' :
-                            'bg-status-kill/20 text-status-kill'
+                        row.runRateStatus === 'at-risk' ? 'bg-status-risk/20 text-status-risk' :
+                          'bg-status-kill/20 text-status-kill'
                         }`}>
                         <span className={`w-2 h-2 rounded-full ${row.runRateStatus === 'on-track' ? 'bg-status-scale' :
-                            row.runRateStatus === 'at-risk' ? 'bg-status-risk' :
-                              'bg-status-kill'
+                          row.runRateStatus === 'at-risk' ? 'bg-status-risk' :
+                            'bg-status-kill'
                           }`}></span>
                         {row.runRateStatus === 'on-track' ? 'On Track' :
                           row.runRateStatus === 'at-risk' ? 'At Risk' : 'Behind'}

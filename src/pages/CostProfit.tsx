@@ -47,7 +47,7 @@ export default function CostProfitPage() {
       // 2. Fetch Ad Performance (Spend) filtered by Date
       let adQuery = supabase
         .from('ad_performance_daily')
-        .select('product, spend') // Assuming 'product' column exists in ad_performance_daily as per previous tasks
+        .select('product_code, spend') // Assuming 'product' column exists in ad_performance_daily as per previous tasks
         .gte('date', fromDate)
         .lte('date', toDate);
 
@@ -62,9 +62,9 @@ export default function CostProfitPage() {
       // Assuming leads_sent_daily has a 'date' column
       let leadsQuery = supabase
         .from('leads_sent_daily')
-        .select('product, confirmed_amount')
-        .gte('date', fromDate)
-        .lte('date', toDate);
+        .select('product_code, confirmed_amount')
+        .gte('report_date', fromDate)
+        .lte('report_date', toDate);
 
       const { data: leadsData } = await leadsQuery;
 
@@ -93,10 +93,10 @@ export default function CostProfitPage() {
       // Aggregate Spend
       adPerformance?.forEach((row: any) => {
         // If we have selected a specific product, only process matches
-        if (selectedProduct !== 'all' && row.product !== selectedProduct) return;
+        if (selectedProduct !== 'all' && row.product_code !== selectedProduct) return;
 
         // Try to find exact match
-        let entry = productMap.get(row.product);
+        let entry = productMap.get(row.product_code);
 
         if (entry) {
           entry.spend += (row.spend || 0);
@@ -109,12 +109,13 @@ export default function CostProfitPage() {
 
       // Aggregate Confirmed Leads
       leadsData?.forEach((row: any) => {
-        if (selectedProduct !== 'all' && row.product !== selectedProduct) return;
-        let entry = productMap.get(row.product);
+        if (selectedProduct !== 'all' && row.product_code !== selectedProduct) return;
+        let entry = productMap.get(row.product_code);
         if (entry) {
           entry.confirmedLeads += (row.confirmed_amount || 0);
         }
       });
+
 
       // Calculate Revenue, Profit, ROI
       const calculatedMetrics: FinancialMetrics[] = [];

@@ -78,145 +78,181 @@ export type Database = {
         Row: {
           id: number
           product_code: string
-          product_name: string | null
+          product_name_th: string | null
           sell_price: number
           owner_name: string | null
           target_cpl: number | null
+          target_sent_leads: number | null
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: number
           product_code: string
-          product_name?: string | null
+          product_name_th?: string | null
           sell_price: number
           owner_name?: string | null
           target_cpl?: number | null
+          target_sent_leads?: number | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: number
           product_code?: string
-          product_name?: string | null
+          product_name_th?: string | null
           sell_price?: number
           owner_name?: string | null
           target_cpl?: number | null
+          target_sent_leads?: number | null
           created_at?: string
           updated_at?: string
         }
         Relationships: []
       }
+      product_performance_daily: {
+        Row: {
+          id: string
+          date: string
+          product_code: string | null
+          spend: number
+          impressions: number
+          clicks: number
+          meta_leads: number
+          sent_leads: number
+          tl_leads: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          date: string
+          product_code?: string | null
+          spend?: number
+          impressions?: number
+          clicks?: number
+          meta_leads?: number
+          sent_leads?: number
+          tl_leads?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          date?: string
+          product_code?: string | null
+          spend?: number
+          impressions?: number
+          clicks?: number
+          meta_leads?: number
+          sent_leads?: number
+          tl_leads?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
       ad_performance_daily: {
         Row: {
-          id: number
+          id: string
           date: string
-          account_name: string | null
-          campaign_name: string | null
+          product_code: string | null
+          ad_id: string | null
           ad_name: string | null
-          product: string | null
           image_url: string | null
           spend: number
           impressions: number
           clicks: number
-          leads: number
+          meta_leads: number
+          status: string | null
           created_at: string
         }
         Insert: {
-          id?: number
+          id?: string
           date: string
-          account_name?: string | null
-          campaign_name?: string | null
+          product_code?: string | null
+          ad_id?: string | null
           ad_name?: string | null
-          product?: string | null
           image_url?: string | null
           spend?: number
           impressions?: number
           clicks?: number
-          leads?: number
+          meta_leads?: number
+          status?: string | null
           created_at?: string
         }
         Update: {
-          id?: number
+          id?: string
           date?: string
-          account_name?: string | null
-          campaign_name?: string | null
+          product_code?: string | null
+          ad_id?: string | null
           ad_name?: string | null
-          product?: string | null
           image_url?: string | null
           spend?: number
           impressions?: number
           clicks?: number
-          leads?: number
+          meta_leads?: number
+          status?: string | null
           created_at?: string
         }
         Relationships: []
       }
       leads_sent_daily: {
         Row: {
-          id: number
-          date: string
-          product: string
-          admin_name: string | null
-          sent_amount: number
+          id: string
+          report_date: string
+          product_code: string
+          sent_all_amount: number
           confirmed_amount: number
           created_at: string
+          updated_at: string
         }
         Insert: {
-          id?: number
-          date: string
-          product: string
-          admin_name?: string | null
-          sent_amount?: number
+          id?: string
+          report_date: string
+          product_code: string
+          sent_all_amount?: number
           confirmed_amount?: number
           created_at?: string
+          updated_at?: string
         }
         Update: {
-          id?: number
-          date?: string
-          product?: string
-          admin_name?: string | null
-          sent_amount?: number
+          id?: string
+          report_date?: string
+          product_code?: string
+          sent_all_amount?: number
           confirmed_amount?: number
           created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
       audience_breakdown_daily: {
         Row: {
-          id: number
+          id: string
           date: string
-          product: string | null
-          account_name: string | null
-          campaign_name: string | null
+          product_code: string | null
           age_range: string | null
           gender: string | null
           spend: number
-          leads: number
+          meta_leads: number
           created_at: string
         }
         Insert: {
-          id?: number
+          id?: string
           date: string
-          product?: string | null
-          account_name?: string | null
-          campaign_name?: string | null
+          product_code?: string | null
           age_range?: string | null
           gender?: string | null
           spend?: number
-          leads?: number
+          meta_leads?: number
           created_at?: string
         }
         Update: {
-          id?: number
+          id?: string
           date?: string
-          product?: string | null
-          account_name?: string | null
-          campaign_name?: string | null
+          product_code?: string | null
           age_range?: string | null
           gender?: string | null
           spend?: number
-          leads?: number
+          meta_leads?: number
           created_at?: string
         }
         Relationships: []

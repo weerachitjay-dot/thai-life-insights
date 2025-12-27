@@ -57,7 +57,7 @@ export default function AudiencePage() {
       // Filter in memory for product to be safe / handle 'all'
       const filteredData = data.filter((row: any) => {
         // Product Filter
-        if (product !== 'all' && row.product !== product && !row.campaign_name?.includes(product)) return false;
+        if (product !== 'all' && row.product_code !== product && !row.campaign_name?.includes(product)) return false;
         // Account Filter (if row has account_name)
         if (account !== 'all' && row.account_name && row.account_name !== account) return false;
         return true;

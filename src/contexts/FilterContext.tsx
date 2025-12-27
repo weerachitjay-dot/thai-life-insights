@@ -65,7 +65,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       // product_settings is usually the source of truth for config
       const { data: productData, error: productError } = await supabase
         .from('product_settings')
-        .select('product_code, product_name'); // Assuming these fields exist. Checking types/index.ts -> ProductSetting has 'product_code'
+        .select('product_code, product_name_th'); // product_name_th is the correct column
 
       if (productError) throw productError;
 
@@ -81,7 +81,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
             return {
               value: p.product_code,
-              label: p.product_code, // Use code as label for now, or p.product_name if available (type check says no product_name but let's see)
+              label: p.product_name_th || p.product_code,
               category
             };
           })
