@@ -106,7 +106,7 @@ export default function AiAssistantPage() {
       }
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
       // Build prompt with context
       const systemPrompt = `คุณคือผู้ช่วย AI สำหรับวิเคราะห์ข้อมูลโฆษณา Facebook Ads ของบริษัทประกันชีวิต
@@ -175,14 +175,14 @@ ${dataContext}
                 className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'assistant'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary'
                   }`}>
                   {msg.role === 'assistant' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
                 </div>
                 <div className={`max-w-[70%] p-3 rounded-lg whitespace-pre-wrap ${msg.role === 'assistant'
-                    ? 'bg-secondary text-foreground'
-                    : 'bg-primary text-primary-foreground'
+                  ? 'bg-secondary text-foreground'
+                  : 'bg-primary text-primary-foreground'
                   }`}>
                   {msg.content}
                 </div>
