@@ -56,12 +56,23 @@ export default function LeadsAnalysisPage() {
         return map.get(code)!;
       };
 
+      // Helper to validate product code
+      const isValidProductCode = (code: any): boolean => {
+        if (!code || typeof code !== 'string') return false;
+        const normalized = code.trim();
+        if (normalized === '' || normalized === '{}' || normalized === 'UNKNOWN-PRODUCT') return false;
+        if (normalized.startsWith('UNKNOWN') || normalized.startsWith('unknown')) return false;
+        return true;
+      };
+
       ads?.forEach((row: any) => {
+        if (!isValidProductCode(row.product_code)) return;
         const item = getOrCreate(row.product_code);
         item.metaLeads += (row.meta_leads || 0);
       });
 
       leads?.forEach((row: any) => {
+        if (!isValidProductCode(row.product_code)) return;
         const item = getOrCreate(row.product_code);
         item.sentLeads += (row.sent_all_amount || 0);
         item.tlLeads += (row.confirmed_amount || 0);
@@ -207,7 +218,7 @@ export default function LeadsAnalysisPage() {
                 margin={{ top: 0, right: 30, left: 100, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                <XAxis type="number" domain={[0, 'auto']} tickFormatter={(v) => `${v}%`} />
                 <YAxis
                   type="category"
                   dataKey="product"
@@ -286,14 +297,14 @@ export default function LeadsAnalysisPage() {
                     <td className="p-3 text-right font-mono">{formatNumber(row.tlLeads)}</td>
                     <td className="p-3 text-right">
                       <span className={`font-mono font-bold ${row.screeningRate >= 75 ? 'text-status-scale' :
-                          row.screeningRate >= 65 ? 'text-status-hold' : 'text-status-risk'
+                        row.screeningRate >= 65 ? 'text-status-hold' : 'text-status-risk'
                         }`}>
                         {formatPercent(row.screeningRate)}
                       </span>
                     </td>
                     <td className="p-3 text-right">
                       <span className={`font-mono font-bold ${row.conversionRate >= 70 ? 'text-status-scale' :
-                          row.conversionRate >= 60 ? 'text-status-hold' : 'text-status-risk'
+                        row.conversionRate >= 60 ? 'text-status-hold' : 'text-status-risk'
                         }`}>
                         {formatPercent(row.conversionRate)}
                       </span>
