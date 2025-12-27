@@ -11,6 +11,9 @@ import { Search, Sparkles, CheckCircle, Copy, Database, AlertCircle, Settings } 
 import { searchFacebookInterests } from '@/lib/interestService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { useFilter } from '@/contexts/FilterContext';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { format } from 'date-fns';
 
 interface InterestResult {
   id: string;
@@ -27,11 +30,15 @@ interface ApiCredentials {
 
 export default function AudienceLab() {
   const [query, setQuery] = useState('');
+  const [productContext, setProductContext] = useState('');
   const [results, setResults] = useState<InterestResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [brainstorming, setBrainstorming] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState('');
   const [credentials, setCredentials] = useState<ApiCredentials>({});
   const [isConfigured, setIsConfigured] = useState(false);
   const [loadingCredentials, setLoadingCredentials] = useState(true);
+  const { dateRange, product } = useFilter();
 
   useEffect(() => {
     fetchCredentials();
@@ -54,7 +61,6 @@ export default function AudienceLab() {
           if (row.provider === 'gemini') creds.gemini = row.access_token;
         });
         setCredentials(creds);
-        // Consider configured if at least Facebook + one AI service is available
         setIsConfigured(!!creds.facebook && (!!creds.groq || !!creds.gemini));
       }
     } catch (error) {
@@ -73,7 +79,7 @@ export default function AudienceLab() {
       });
       return;
     }
-    
+
     if (!query.trim()) {
       toast({
         title: "Search Query Required",
@@ -99,20 +105,143 @@ export default function AudienceLab() {
     }
   };
 
-  const handleBrainstorm = () => {
-    if (!credentials.groq && !credentials.gemini) {
+  const handleBrainstorm = async () => {
+    // Check for Gemini API key (prioritize over Groq)
+    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+    if (!geminiKey || geminiKey === 'YOUR_GEMINI_API_KEY_HERE') {
       toast({
-        title: "AI Service Not Configured",
-        description: "Please configure Groq or Gemini API keys in Data Management.",
+        title: "Gemini API Key Required",
+        description: "Please configure VITE_GEMINI_API_KEY in environment variables.",
         variant: "destructive",
       });
       return;
     }
-    // AI brainstorm logic would go here
-    toast({
-      title: "AI Brainstorm",
-      description: "AI brainstorming feature coming soon!",
-    });
+
+    setBrainstorming(true);
+    setAiSuggestions('');
+
+    try {
+      // Fetch performance data
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
+
+      // Get audience breakdown data
+      const { data: audienceData } = await (supabase as any)
+        .from('audience_breakdown_daily')
+        .select('*')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      // Get performance data
+      const { data: performanceData } = await (supabase as any)
+        .from('product_performance_daily')
+        .select('*')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      // Get ad performance for CPL analysis
+      const { data: adData } = await (supabase as any)
+        .from('ad_performance_daily')
+        .select('*')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      // Build context for AI
+      let context = `Data Analysis Period: ${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d')}\n\n`;
+
+      if (product !== 'all') {
+        context += `Selected Product: ${product}\n\n`;
+      }
+
+      // Audience demographics
+      if (audienceData && audienceData.length > 0) {
+        const ageGroups: Record<string, { leads: number, spend: number }> = {};
+        const genderGroups: Record<string, { leads: number, spend: number }> = {};
+
+        audienceData.forEach((row: any) => {
+          if (row.age_range) {
+            if (!ageGroups[row.age_range]) ageGroups[row.age_range] = { leads: 0, spend: 0 };
+            ageGroups[row.age_range].leads += row.meta_leads || 0;
+            ageGroups[row.age_range].spend += row.spend || 0;
+          }
+          if (row.gender) {
+            if (!genderGroups[row.gender]) genderGroups[row.gender] = { leads: 0, spend: 0 };
+            genderGroups[row.gender].leads += row.meta_leads || 0;
+            genderGroups[row.gender].spend += row.spend || 0;
+          }
+        });
+
+        context += "Top Performing Age Groups:\n";
+        Object.entries(ageGroups)
+          .sort((a, b) => b[1].leads - a[1].leads)
+          .slice(0, 3)
+          .forEach(([age, data]) => {
+            const cpl = data.leads > 0 ? Math.round(data.spend / data.leads) : 0;
+            context += `- ${age}: ${data.leads} leads, CPL ฿${cpl}\n`;
+          });
+
+        context += "\nGender Performance:\n";
+        Object.entries(genderGroups).forEach(([gender, data]) => {
+          const cpl = data.leads > 0 ? Math.round(data.spend / data.leads) : 0;
+          context += `- ${gender}: ${data.leads} leads, CPL ฿${cpl}\n`;
+        });
+      }
+
+      // Performance summary
+      if (performanceData && performanceData.length > 0) {
+        const totalSpend = performanceData.reduce((sum: number, row: any) => sum + (row.spend || 0), 0);
+        const totalLeads = performanceData.reduce((sum: number, row: any) => sum + (row.meta_leads || 0), 0);
+        const avgCPL = totalLeads > 0 ? Math.round(totalSpend / totalLeads) : 0;
+
+        context += `\nOverall Performance:\n`;
+        context += `- Total Leads: ${totalLeads}\n`;
+        context += `- Total Spend: ฿${totalSpend.toLocaleString()}\n`;
+        context += `- Average CPL: ฿${avgCPL}\n`;
+      }
+
+      // Product context from user input
+      if (productContext.trim()) {
+        context += `\nProduct Description: ${productContext}\n`;
+      }
+
+      // Call Gemini AI
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+      const prompt = `คุณคือผู้เชี่ยวชาญด้าน Facebook Ads Targeting สำหรับประกันชีวิต
+      
+ข้อมูลที่มี:
+${context}
+
+ภารกิจ:
+1. วิเคราะห์ข้อมูลที่มี (อายุ, เพศ, CPL, Performance)
+2. แนะนำ Facebook Interests ที่เหมาะสมสำหรับ Targeting
+3. ให้เหตุผลว่าทำไมถึงเลือก Interest เหล่านี้
+4. แนะนำ 5-7 Interest Keywords ที่ควรลองใช้
+
+ตอบเป็นภาษาไทย แบ่งเป็นหัวข้อชัดเจน ให้คำแนะนำที่เป็นประโยชน์และนำไปใช้งานได้จริง`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const suggestions = response.text();
+
+      setAiSuggestions(suggestions);
+
+      toast({
+        title: "AI Analysis Complete",
+        description: "Interest recommendations generated successfully!",
+      });
+    } catch (error: any) {
+      console.error('Brainstorm error:', error);
+      toast({
+        title: "AI Analysis Failed",
+        description: error.message || "Failed to generate recommendations.",
+        variant: "destructive",
+      });
+    } finally {
+      setBrainstorming(false);
+    }
   };
 
   return (
@@ -146,7 +275,11 @@ export default function AudienceLab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Product Context (For AI)</label>
-              <Input placeholder="e.g., Luxury Condo for Investment" />
+              <Input
+                placeholder="e.g., Life Insurance for Seniors, Saving Plan for Families"
+                value={productContext}
+                onChange={(e) => setProductContext(e.target.value)}
+              />
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Search Interest</label>
@@ -164,17 +297,32 @@ export default function AudienceLab() {
               <Search className="w-4 h-4 mr-2" />
               {loading ? 'Searching...' : 'Search FB'}
             </Button>
-            <Button 
-              variant="default" 
+            <Button
+              variant="default"
               className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 gap-2"
               onClick={handleBrainstorm}
-              disabled={!credentials.groq && !credentials.gemini}
+              disabled={brainstorming}
             >
-              <Sparkles className="w-4 h-4 animate-pulse" />
-              Brainstorm with AI
+              <Sparkles className={`w-4 h-4 ${brainstorming ? 'animate-spin' : 'animate-pulse'}`} />
+              {brainstorming ? 'Analyzing...' : 'Brainstorm with AI'}
             </Button>
           </div>
         </Card>
+
+        {/* AI Suggestions */}
+        {aiSuggestions && (
+          <Card className="p-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+            <div className="flex items-start gap-3 mb-4">
+              <Sparkles className="w-6 h-6 text-primary shrink-0" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold mb-2">AI Interest Recommendations</h3>
+                <div className="prose prose-sm max-w-none whitespace-pre-wrap text-foreground">
+                  {aiSuggestions}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Results Table Placeholder (when no results) */}
         {results.length === 0 && (
@@ -224,8 +372,8 @@ export default function AudienceLab() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {item.audience_size_upper_bound 
-                        ? (item.audience_size_upper_bound / 1000000).toFixed(1) + 'M' 
+                      {item.audience_size_upper_bound
+                        ? (item.audience_size_upper_bound / 1000000).toFixed(1) + 'M'
                         : 'N/A'}
                     </TableCell>
                     <TableCell>
