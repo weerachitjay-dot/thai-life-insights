@@ -67,7 +67,7 @@ export default function OverviewPage() {
   // Fetch Real Data (Cycles & Sent Leads)
   useEffect(() => {
     fetchDashboardData();
-  }, [product, metaData]); // Re-run when metaData changes too
+  }, [product, metaData, dateRange]); // Re-run when dateRange changes
 
   const fetchDashboardData = async () => {
     try {
@@ -81,10 +81,15 @@ export default function OverviewPage() {
 
       if (cycleError) throw cycleError;
 
-      // 2. Fetch Leads Data (Actuals - Sent)
+      // 2. Fetch Leads Data (Actuals - Sent) filtered by date range
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
+
       const { data: leads, error: leadsError } = await supabase
         .from('leads_sent_daily')
-        .select('product_code, sent_all_amount, confirmed_amount');
+        .select('product_code, sent_all_amount, confirmed_amount')
+        .gte('report_date', fromDate)
+        .lte('report_date', toDate);
 
       if (leadsError) throw leadsError;
 
