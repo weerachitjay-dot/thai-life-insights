@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Send, Bot, User } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '@/integrations/supabase/client';
+import { useFilter } from '@/contexts/FilterContext';
+import { format } from 'date-fns';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -14,30 +18,127 @@ interface Message {
 export default function AiAssistantPage() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
-    { 
-      role: 'assistant', 
-      content: 'สวัสดีครับ ผมคือ AI ผู้ช่วยวิเคราะห์โฆษณาของคุณ มีอะไรให้ช่วยเช็ควันนี้ครับ? (เช่น "ขอสรุปยอด Leads วันนี้", "แคมเปญไหน CPL แพงสุด")' 
+    {
+      role: 'assistant',
+      content: 'สวัสดีครับ ผมคือ AI ผู้ช่วยวิเคราะห์โฆษณาของคุณ มีอะไรให้ช่วยเช็ควันนี้ครับ? (เช่น "ขอสรุปยอด Leads วันนี้", "แคมเปญไหน CPL แพงสุด")'
     }
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  const { dateRange, product } = useFilter();
+  const [dataContext, setDataContext] = useState<string>('');
 
-  const handleSend = () => {
+  // Fetch data context for AI
+  useEffect(() => {
+    fetchDataContext();
+  }, [dateRange, product]);
+
+  const fetchDataContext = async () => {
+    try {
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
+
+      // Fetch performance data
+      const { data: performanceData } = await supabase
+        .from('product_performance_daily')
+        .select('*')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      // Fetch leads data
+      const { data: leadsData } = await supabase
+        .from('leads_sent_daily')
+        .select('*')
+        .gte('report_date', fromDate)
+        .lte('report_date', toDate);
+
+      // Build context string
+      let context = `Current Data Context (${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d')}):\n\n`;
+
+      if (performanceData && performanceData.length > 0) {
+        const totalSpend = performanceData.reduce((sum: number, row: any) => sum + (row.spend || 0), 0);
+        const totalLeads = performanceData.reduce((sum: number, row: any) => sum + (row.meta_leads || 0), 0);
+        const totalReach = performanceData.reduce((sum: number, row: any) => sum + (row.reach || 0), 0);
+
+        context += `Performance Summary:\n`;
+        context += `- Total Spend: ฿${totalSpend.toLocaleString()}\n`;
+        context += `- Total Meta Leads: ${totalLeads}\n`;
+        context += `- Total Reach: ${totalReach.toLocaleString()}\n`;
+        context += `- Average CPL: ฿${totalLeads > 0 ? Math.round(totalSpend / totalLeads) : 0}\n\n`;
+      }
+
+      if (leadsData && leadsData.length > 0) {
+        const totalSent = leadsData.reduce((sum: number, row: any) => sum + (row.sent_all_amount || 0), 0);
+        const totalConfirmed = leadsData.reduce((sum: number, row: any) => sum + (row.confirmed_amount || 0), 0);
+
+        context += `Leads Summary:\n`;
+        context += `- Total Sent Leads: ${totalSent}\n`;
+        context += `- Total Confirmed Leads: ${totalConfirmed}\n`;
+        context += `- Confirmation Rate: ${totalSent > 0 ? ((totalConfirmed / totalSent) * 100).toFixed(1) : 0}%\n`;
+      }
+
+      setDataContext(context);
+    } catch (error) {
+      console.error('Error fetching data context:', error);
+    }
+  };
+
+  const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    
+
     // Add User Message
-    const newMessages: Message[] = [...messages, { role: 'user', content: input }];
+    const userMessage = input;
+    const newMessages: Message[] = [...messages, { role: 'user', content: userMessage }];
     setMessages(newMessages);
     setInput('');
     setIsLoading(true);
 
-    // Simulate AI Response (เดี๋ยวเราค่อยต่อ API จริงตรงนี้)
-    setTimeout(() => {
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'รับทราบครับ... (ระบบกำลังเชื่อมต่อฐานข้อมูล Antigravity...)' 
+    try {
+      // Initialize Gemini
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+      if (!apiKey) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '❌ Gemini API Key ไม่ได้ตั้งค่า กรุณาเพิ่ม VITE_GEMINI_API_KEY ใน environment variables'
+        }]);
+        setIsLoading(false);
+        return;
+      }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+
+      // Build prompt with context
+      const systemPrompt = `คุณคือผู้ช่วย AI สำหรับวิเคราะห์ข้อมูลโฆษณา Facebook Ads ของบริษัทประกันชีวิต
+คุณมีข้อมูลดังนี้:
+
+${dataContext}
+
+ตอบคำถามเป็นภาษาไทย ให้คำแนะนำที่เป็นประโยชน์และเฉพาะเจาะจง 
+ใช้ข้อมูลที่มีให้เท่านั้น ถ้าไม่มีข้อมูลบอกตรงๆ
+ให้คำแนะนำแบบมืออาชีพและเป็นมิตร`;
+
+      const fullPrompt = `${systemPrompt}\n\nคำถาม: ${userMessage}`;
+
+      // Call Gemini API
+      const result = await model.generateContent(fullPrompt);
+      const response = await result.response;
+      const aiResponse = response.text();
+
+      // Add AI Response
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: aiResponse
       }]);
+    } catch (error: any) {
+      console.error('Gemini API Error:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถเชื่อมต่อ Gemini API ได้'}`
+      }]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -69,22 +170,20 @@ export default function AiAssistantPage() {
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-4">
             {messages.map((msg, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                  msg.role === 'assistant' 
-                    ? 'bg-primary text-primary-foreground' 
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'assistant'
+                    ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary'
-                }`}>
+                  }`}>
                   {msg.role === 'assistant' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
                 </div>
-                <div className={`max-w-[70%] p-3 rounded-lg ${
-                  msg.role === 'assistant' 
-                    ? 'bg-secondary text-foreground' 
+                <div className={`max-w-[70%] p-3 rounded-lg whitespace-pre-wrap ${msg.role === 'assistant'
+                    ? 'bg-secondary text-foreground'
                     : 'bg-primary text-primary-foreground'
-                }`}>
+                  }`}>
                   {msg.content}
                 </div>
               </div>
