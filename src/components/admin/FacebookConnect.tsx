@@ -75,31 +75,35 @@ export const FacebookConnect = () => {
     }
 
     setIsLoading(true);
-    window.FB.login(async function (response: any) {
-      if (response.authResponse) {
-        const accessToken = response.authResponse.accessToken;
+    window.FB.login(function (response: any) {
+      const processLogin = async () => {
+        if (response.authResponse) {
+          const accessToken = response.authResponse.accessToken;
 
-        // บันทึกลง Supabase
-        const { error } = await supabase
-          .from('config_tokens')
-          .upsert({
-            provider: 'facebook',
-            access_token: accessToken,
-            token_type: 'short_lived',
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'provider' });
+          // บันทึกลง Supabase
+          const { error } = await supabase
+            .from('config_tokens')
+            .upsert({
+              provider: 'facebook',
+              access_token: accessToken,
+              token_type: 'short_lived',
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'provider' });
 
-        if (error) {
-          console.error("Supabase Error:", error);
-          toast.error("Failed to save token.");
+          if (error) {
+            console.error("Supabase Error:", error);
+            toast.error("Failed to save token.");
+          } else {
+            setIsConnected(true);
+            toast.success("Facebook Connected Successfully!");
+          }
         } else {
-          setIsConnected(true);
-          toast.success("Facebook Connected Successfully!");
+          toast.error("User cancelled login.");
         }
-      } else {
-        toast.error("User cancelled login or did not fully authorize.");
-      }
-      setIsLoading(false);
+        setIsLoading(false);
+      };
+
+      processLogin();
     }, { scope: 'public_profile,email,ads_read,read_insights' });
   };
 
