@@ -17,7 +17,40 @@ interface FinancialMetrics {
   revenue: number;
   profit: number;
   roi: number;
+  projection: number;
 }
+
+interface ProductCycle {
+  id: string;
+  product_code: string;
+  delivery_start: string;
+  delivery_end: string;
+  target_leads: number;
+}
+
+// Effective Operational Days projection algorithm (from Overview.tsx)
+const calculateProjection = (confirmedLeads: number, deliveryStart: string, deliveryEnd: string): number => {
+  const today = new Date();
+  const start = new Date(deliveryStart);
+  const end = new Date(deliveryEnd);
+
+  // Case A: Before Delivery Starts (Warm-up period)
+  if (today < start) return 0;
+
+  // Case B: Cycle Ended
+  if (today > end) return confirmedLeads;
+
+  // Case C: Active Delivery Period
+  const daysElapsed = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysElapsed <= 0) return 0;
+
+  const runRate = confirmedLeads / daysElapsed;
+  const forecast = confirmedLeads + (runRate * daysRemaining);
+
+  return Math.floor(forecast);
+};
 
 export default function CostProfitPage() {
   const { dateRange, product: selectedProduct, account: selectedAccount } = useFilter();
@@ -38,23 +71,28 @@ export default function CostProfitPage() {
       const fromDate = dateRange.from.toISOString().split('T')[0];
       const toDate = dateRange.to.toISOString().split('T')[0];
 
+      // 0. Fetch Product Cycles for Projection
+      const { data: cycles } = await supabase
+        .from('product_cycles')
+        .select('product_code, delivery_start, delivery_end, target_leads')
+        .eq('is_active', true);
+
       // 1. Fetch Product Settings (Price)
       // Logic: If 'selectedProduct' is NOT 'all', we could filter here, 
       // but usually settings are small so fetching all is fine.
       let settingsQuery = supabase.from('product_settings').select('*');
       const { data: products } = await settingsQuery;
 
-      // 2. Fetch Ad Performance (Spend) filtered by Date
+      // 2. Fetch Ad Performance (Spend) filtered by Date and Account
       let adQuery = supabase
         .from('ad_performance_daily')
-        .select('product_code, spend') // Assuming 'product' column exists in ad_performance_daily as per previous tasks
+        .select('product_code, spend')
         .gte('date', fromDate)
         .lte('date', toDate);
 
-      // Filter by Product if needed (though aggregating later is safer if product codes vary)
-      // If we filtered by product in query, we must ensure DB column matches exactly.
-      // Filter by Account if needed? 
-      // if (selectedAccount !== 'all') adQuery = adQuery.eq('account_name', selectedAccount);
+      // Filter by Account if selected (using ad_account_id from meta_ads_daily_stats or account_id)
+      // Note: ad_performance_daily doesn't have account info, so we'll skip account filtering here for now
+      // If account filtering is needed, the schema needs to be updated to include account_id
 
       const { data: adPerformance } = await adQuery;
 
@@ -128,13 +166,25 @@ export default function CostProfitPage() {
         const profit = revenue - val.spend;
         const roi = val.spend > 0 ? (profit / val.spend) * 100 : 0;
 
+        // Calculate Projection
+        const cycle = cycles?.find(c => c.product_code === key);
+        let projection = val.confirmedLeads; // Default to current confirmed leads
+        if (cycle) {
+          projection = calculateProjection(
+            val.confirmedLeads,
+            cycle.delivery_start,
+            cycle.delivery_end
+          );
+        }
+
         calculatedMetrics.push({
           product: key,
           spend: val.spend,
           confirmedLeads: val.confirmedLeads,
           revenue,
           profit,
-          roi
+          roi,
+          projection
         });
 
         totalSpend += val.spend;
@@ -230,6 +280,7 @@ export default function CostProfitPage() {
             <TableRow>
               <TableHead>Product</TableHead>
               <TableHead className="text-right">Confirmed Leads</TableHead>
+              <TableHead className="text-right">Projection</TableHead>
               <TableHead className="text-right">Spend</TableHead>
               <TableHead className="text-right">Revenue</TableHead>
               <TableHead className="text-right">Net Profit</TableHead>
@@ -239,7 +290,7 @@ export default function CostProfitPage() {
           <TableBody>
             {metrics.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   No data found for the selected period.
                   <br /><span className="text-xs">Ensure data exists in `ad_performance_daily` and `leads_sent_daily`.</span>
                 </TableCell>
@@ -249,6 +300,7 @@ export default function CostProfitPage() {
                 <TableRow key={item.product}>
                   <TableCell className="font-medium">{item.product}</TableCell>
                   <TableCell className="text-right">{formatNumber(item.confirmedLeads)}</TableCell>
+                  <TableCell className="text-right text-status-scale font-mono">{formatNumber(item.projection)}</TableCell>
                   <TableCell className="text-right">{formatCurrency(item.spend)}</TableCell>
                   <TableCell className="text-right">{formatCurrency(item.revenue)}</TableCell>
                   <TableCell className={`text-right font-bold ${item.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>

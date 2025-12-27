@@ -93,6 +93,9 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
                   onSelect={(range) => {
                     if (range?.from && range?.to) {
                       setDateRange({ from: range.from, to: range.to });
+                    } else if (range?.from) {
+                      // If only 'from' is selected, set both from and to as the same date
+                      setDateRange({ from: range.from, to: range.from });
                     }
                   }}
                   numberOfMonths={2}

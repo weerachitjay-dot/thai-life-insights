@@ -89,16 +89,23 @@ export function FilterProvider({ children }: { children: ReactNode }) {
         setProductsList(dynamicProducts);
       }
 
-      // 2. Fetch Accounts (Optional - for now keeping static/placeholder as no table specified)
-      // If we had distinct accounts in ad_performance_daily we could fetch them.
-      const { data: adAccounts, error: accError } = await supabase
-        .from('ad_performance_daily')
-        .select('account_name') // Distinct? Supabase js select distinct is tricky without rpc or simple select
-        .limit(10); // Check valid accounts
+      // 2. Fetch Accounts from facebook_tokens table
+      const { data: accountsData, error: accError } = await (supabase as any)
+        .from('facebook_tokens')
+        .select('ad_account_id, account_name');
 
-      // For now, let's just stick to defaults or maybe dynamic if we find account_name
-      // To get distinct, we'd need: .select('account_name', { count: 'exact', head: false })? No.
-      // We'll leave accounts static for this step unless critical.
+      if (accError) {
+        console.error("Error fetching accounts:", accError);
+      } else if (accountsData && accountsData.length > 0) {
+        const dynamicAccounts: FilterOption[] = [
+          { value: 'all', label: 'All Accounts' },
+          ...accountsData.map((acc: any) => ({
+            value: acc.ad_account_id,
+            label: acc.account_name || acc.ad_account_id
+          }))
+        ];
+        setAccountsList(dynamicAccounts);
+      }
 
     } catch (error) {
       console.error("Error fetching filter config:", error);
