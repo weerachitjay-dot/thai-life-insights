@@ -148,9 +148,18 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
                     mode="range"
                     selected={{ from: dateRange.from, to: dateRange.to }}
                     onSelect={(range) => {
-                      // Only update when both dates are selected
-                      if (range?.from && range?.to) {
-                        setDateRange({ from: range.from, to: range.to });
+                      if (range?.from) {
+                        // Allow updating even with just start date
+                        setDateRange({
+                          from: range.from,
+                          to: range.to || range.from
+                        });
+
+                        // Close popover after selecting end date
+                        if (range.to) {
+                          // Use timeout to ensure state updates first
+                          setTimeout(() => document.body.click(), 50);
+                        }
                       }
                     }}
                     numberOfMonths={2}
