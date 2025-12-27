@@ -5,7 +5,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Facebook, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
-// ประกาศ Type ให้ Window รู้จัก FB SDK
 declare global {
   interface Window {
     FB: any;
@@ -38,22 +37,20 @@ export const FacebookConnect = () => {
     checkConnection();
   }, []);
 
-  // 2. โหลด Facebook SDK (แก้จุดที่ Error แล้ว ✅)
+  // 2. โหลด Facebook SDK
   useEffect(() => {
-    // สร้างฟังก์ชันภายใน ไม่ใส่ async หน้า useEffect
     const loadSdk = () => {
-      if (window.FB) return; // ถ้ามีแล้วไม่ต้องโหลดซ้ำ
+      if (window.FB) return;
 
       window.fbAsyncInit = function () {
         window.FB.init({
-          appId: '605018742544860',
+          appId: '605018742544860', // ⚠️ อย่าลืมใส่ App ID ของคุณตรงนี้
           cookie: true,
           xfbml: true,
           version: 'v19.0'
         });
       };
 
-      // Load Script
       (function (d, s, id) {
         var js, fjs = d.getElementsByTagName(s)[0];
         if (d.getElementById(id)) return;
@@ -67,7 +64,7 @@ export const FacebookConnect = () => {
     loadSdk();
   }, []);
 
-  // ฟังก์ชัน Login
+  // 3. ฟังก์ชัน Login (แก้ไข Scope และ Async แล้ว)
   const handleLogin = () => {
     if (!window.FB) {
       toast.error("Facebook SDK not loaded yet. Please refresh.");
@@ -75,12 +72,15 @@ export const FacebookConnect = () => {
     }
 
     setIsLoading(true);
+
+    // ⚠️ เอา async ออกจาก callback หลัก เพื่อแก้ Error
     window.FB.login(function (response: any) {
+
+      // ✅ สร้าง async function ด้านในแทน
       const processLogin = async () => {
         if (response.authResponse) {
           const accessToken = response.authResponse.accessToken;
 
-          // บันทึกลง Supabase
           const { error } = await supabase
             .from('config_tokens')
             .upsert({
@@ -104,7 +104,8 @@ export const FacebookConnect = () => {
       };
 
       processLogin();
-    }, { scope: 'public_profile,email,ads_read' });
+
+    }, { scope: 'public_profile,email,ads_read' }); // 👈 ตัด read_insights ออกแล้ว
   };
 
   const handleDisconnect = async () => {
