@@ -17,7 +17,7 @@ export default function AudiencePage() {
   // Real Data State
   const [ageData, setAgeData] = useState<{ name: string, value: number, leads: number, spend: number }[]>([]);
   const [interestData, setInterestData] = useState<{ name: string, value: number, leads: number }[]>([]);
-  const [overallStats, setOverallStats] = useState({ bestAge: '-', bestInterest: '-', potentialReach: '2.4M' });
+  const [overallStats, setOverallStats] = useState({ bestAge: '-', bestInterest: '-', potentialReach: '-' });
 
   useEffect(() => {
     processAudienceData();

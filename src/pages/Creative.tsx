@@ -78,7 +78,7 @@ export default function CreativePage() {
       const metrics: CreativeData[] = Array.from(adMap.values()).map((ad: any) => {
         const cpl = ad.metaLeads > 0 ? ad.spend / ad.metaLeads : 0;
         const ctr = ad._impressions > 0 ? (ad._clicks / ad._impressions) * 100 : 0;
-        const frequency = 1.0; // Placeholder
+        const frequency = 0; // Not available in this view yet
 
         const fatigueAlert = ctr < 0.8 && ad.spend > 5000;
 

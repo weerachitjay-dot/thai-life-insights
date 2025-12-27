@@ -115,7 +115,7 @@ export async function fetchFacebookAdsData(dateParam = 'today', providedToken = 
 
             for (const ad of ads) {
                 const insights = await ad.getInsights(
-                    ['spend', 'impressions', 'clicks', 'actions', 'date_start'],
+                    ['spend', 'impressions', 'clicks', 'actions', 'reach', 'date_start'],
                     params
                 );
 
@@ -124,6 +124,9 @@ export async function fetchFacebookAdsData(dateParam = 'today', providedToken = 
                         const productCode = mapProductToCode(ad.campaign_name);
                         const spend = parseFloat(stat.spend || 0);
                         const leads = stat.actions ? (stat.actions.find(a => a.action_type === 'lead')?.value || 0) : 0;
+                        const impressions = parseInt(stat.impressions || 0);
+                        const clicks = parseInt(stat.clicks || 0);
+                        const reach = parseInt(stat.reach || 0);
 
                         // Ad Stats
                         allAdStats.push({
@@ -134,16 +137,30 @@ export async function fetchFacebookAdsData(dateParam = 'today', providedToken = 
                             image_url: extractImageUrl(ad.creative),
                             spend: spend,
                             meta_leads: parseInt(leads),
+                            impressions: impressions,
+                            clicks: clicks,
+                            reach: reach,
                             status: ad.status
                         });
 
                         // รวม Product Stats
                         const key = `${stat.date_start}_${productCode}`;
                         if (!allProductStats[key]) {
-                            allProductStats[key] = { date: stat.date_start, product_code: productCode, spend: 0, meta_leads: 0 };
+                            allProductStats[key] = {
+                                date: stat.date_start,
+                                product_code: productCode,
+                                spend: 0,
+                                meta_leads: 0,
+                                impressions: 0,
+                                clicks: 0,
+                                reach: 0
+                            };
                         }
                         allProductStats[key].spend += spend;
                         allProductStats[key].meta_leads += parseInt(leads);
+                        allProductStats[key].impressions += impressions;
+                        allProductStats[key].clicks += clicks;
+                        allProductStats[key].reach += reach;
                     }
                 }
             }
