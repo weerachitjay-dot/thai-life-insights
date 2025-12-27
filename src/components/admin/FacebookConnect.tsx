@@ -104,7 +104,7 @@ export const FacebookConnect = () => {
       };
 
       processLogin();
-    }, { scope: 'public_profile,email,ads_read,read_insights' });
+    }, { scope: 'public_profile,email,ads_read' });
   };
 
   const handleDisconnect = async () => {
