@@ -87,20 +87,76 @@ export function DashboardLayout({ children, title, subtitle }: DashboardLayoutPr
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0 bg-card border-border" align="end">
-                <Calendar
-                  mode="range"
-                  selected={{ from: dateRange.from, to: dateRange.to }}
-                  onSelect={(range) => {
-                    if (range?.from && range?.to) {
-                      setDateRange({ from: range.from, to: range.to });
-                    } else if (range?.from) {
-                      // If only 'from' is selected, set both from and to as the same date
-                      setDateRange({ from: range.from, to: range.from });
-                    }
-                  }}
-                  numberOfMonths={2}
-                  className="p-3 pointer-events-auto"
-                />
+                <div className="flex">
+                  {/* Preset Buttons */}
+                  <div className="flex flex-col gap-2 p-3 border-r border-border">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start text-xs"
+                      onClick={() => {
+                        const now = new Date();
+                        const sevenDaysAgo = new Date(now);
+                        sevenDaysAgo.setDate(now.getDate() - 7);
+                        setDateRange({ from: sevenDaysAgo, to: now });
+                      }}
+                    >
+                      Last 7 Days
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start text-xs"
+                      onClick={() => {
+                        const now = new Date();
+                        const thirtyDaysAgo = new Date(now);
+                        thirtyDaysAgo.setDate(now.getDate() - 30);
+                        setDateRange({ from: thirtyDaysAgo, to: now });
+                      }}
+                    >
+                      Last 30 Days
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start text-xs"
+                      onClick={() => {
+                        const now = new Date();
+                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                        setDateRange({ from: startOfMonth, to: now });
+                      }}
+                    >
+                      This Month
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start text-xs"
+                      onClick={() => {
+                        const now = new Date();
+                        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+                        setDateRange({ from: startOfLastMonth, to: endOfLastMonth });
+                      }}
+                    >
+                      Last Month
+                    </Button>
+                  </div>
+
+                  {/* Calendar */}
+                  <Calendar
+                    mode="range"
+                    selected={{ from: dateRange.from, to: dateRange.to }}
+                    onSelect={(range) => {
+                      // Only update when both dates are selected
+                      if (range?.from && range?.to) {
+                        setDateRange({ from: range.from, to: range.to });
+                      }
+                    }}
+                    numberOfMonths={2}
+                    className="p-3 pointer-events-auto"
+                  />
+                </div>
               </PopoverContent>
             </Popover>
 
