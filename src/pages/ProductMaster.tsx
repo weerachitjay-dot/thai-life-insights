@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import {
@@ -9,62 +9,116 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ProductMasterRow } from '@/types';
+import { ProductMasterRow, ProductSetting } from '@/types';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/campaignParser';
 import { useFilter } from '@/contexts/FilterContext';
 import { cn } from '@/lib/utils';
-
-// Mock data - 3-Layer Matrix
-const allProductMasterData: ProductMasterRow[] = [
-  { 
-    product: 'LIFE-SENIOR-MORRADOK', category: 'Life',
-    metaSpend: 350000, metaLeads: 2450, metaCpl: 143,
-    sentLeads: 1650, screeningRate: 67.3, sentCpl: 212,
-    tlLeads: 1200, revenue: 2400000, roi: 6.86
-  },
-  { 
-    product: 'SAVING-RETIRE-GOLD', category: 'Saving',
-    metaSpend: 280000, metaLeads: 1820, metaCpl: 154,
-    sentLeads: 1420, screeningRate: 78.0, sentCpl: 197,
-    tlLeads: 980, revenue: 1960000, roi: 7.00
-  },
-  { 
-    product: 'HEALTH-PLUS-PREMIUM', category: 'Health',
-    metaSpend: 320000, metaLeads: 1600, metaCpl: 200,
-    sentLeads: 1100, screeningRate: 68.8, sentCpl: 291,
-    tlLeads: 650, revenue: 975000, roi: 3.05
-  },
-  { 
-    product: 'LIFE-PROTECT-FAMILY', category: 'Life',
-    metaSpend: 180000, metaLeads: 1450, metaCpl: 124,
-    sentLeads: 1180, screeningRate: 81.4, sentCpl: 153,
-    tlLeads: 920, revenue: 1840000, roi: 10.22
-  },
-  { 
-    product: 'SAVING-EDU-FUTURE', category: 'Saving',
-    metaSpend: 120000, metaLeads: 680, metaCpl: 176,
-    sentLeads: 520, screeningRate: 76.5, sentCpl: 231,
-    tlLeads: 340, revenue: 510000, roi: 4.25
-  },
-  { 
-    product: 'HEALTH-CRITICAL-CARE', category: 'Health',
-    metaSpend: 95000, metaLeads: 480, metaCpl: 198,
-    sentLeads: 370, screeningRate: 77.1, sentCpl: 257,
-    tlLeads: 220, revenue: 330000, roi: 3.47
-  },
-];
+import { supabase } from '@/integrations/supabase/client';
 
 export default function ProductMasterPage() {
-  const { product } = useFilter();
+  const { product, dateRange } = useFilter();
+  const [data, setData] = useState<ProductMasterRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Filter data based on selected product
-  const productMasterData = useMemo(() => {
-    if (product === 'all') return allProductMasterData;
-    return allProductMasterData.filter(row => row.product === product);
-  }, [product]);
+  useEffect(() => {
+    fetchProductMasterData();
+  }, [product, dateRange]);
+
+  const fetchProductMasterData = async () => {
+    try {
+      setLoading(true);
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
+
+      // 1. Fetch Settings (Price)
+      const { data: settings } = await supabase.from('product_settings').select('*');
+
+      // 2. Fetch Ads (Meta Layer)
+      const { data: ads } = await supabase
+        .from('ad_performance_daily')
+        .select('product_code, spend, meta_leads')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      // 3. Fetch Leads (Quality & Business Layer)
+      const { data: leads } = await supabase
+        .from('leads_sent_daily')
+        .select('product_code, sent_all_amount, confirmed_amount')
+        .gte('report_date', fromDate)
+        .lte('report_date', toDate);
+
+      // Aggregation
+      const map = new Map<string, ProductMasterRow>();
+
+      // Init from settings to ensure all products present
+      settings?.forEach((s: ProductSetting) => {
+        let category: any = 'Other';
+        if (s.product_code.startsWith('LIFE')) category = 'Life';
+        if (s.product_code.startsWith('SAVING')) category = 'Saving';
+        if (s.product_code.startsWith('HEALTH')) category = 'Health';
+
+        map.set(s.product_code, {
+          product: s.product_code,
+          category,
+          metaSpend: 0, metaLeads: 0, metaCpl: 0,
+          sentLeads: 0, screeningRate: 0, sentCpl: 0,
+          tlLeads: 0, revenue: 0, roi: 0
+        });
+      });
+
+      // Process Ads
+      ads?.forEach((row: any) => {
+        if (!map.has(row.product_code)) return; // Skip unknown products
+        const item = map.get(row.product_code)!;
+        item.metaSpend += (row.spend || 0);
+        item.metaLeads += (row.meta_leads || 0);
+      });
+
+      // Process Leads
+      leads?.forEach((row: any) => {
+        if (!map.has(row.product_code)) return;
+        const item = map.get(row.product_code)!;
+        item.sentLeads += (row.sent_all_amount || 0);
+        item.tlLeads += (row.confirmed_amount || 0);
+      });
+
+      // Calculate Derived Metrics
+      const finalData: ProductMasterRow[] = [];
+      map.forEach((item) => {
+        // Filter if needed
+        if (product !== 'all' && item.product !== product) return;
+
+        // Meta CPC
+        item.metaCpl = item.metaLeads > 0 ? Math.round(item.metaSpend / item.metaLeads) : 0;
+
+        // Screening Rate
+        item.screeningRate = item.metaLeads > 0 ? (item.sentLeads / item.metaLeads) * 100 : 0;
+
+        // Sent CPL
+        item.sentCpl = item.sentLeads > 0 ? Math.round(item.metaSpend / item.sentLeads) : 0;
+
+        // Revenue & ROI
+        const setting = settings?.find((s: ProductSetting) => s.product_code === item.product);
+        const price = setting?.sell_price || 0;
+
+        item.revenue = item.tlLeads * price;
+        const profit = item.revenue - item.metaSpend;
+        item.roi = item.metaSpend > 0 ? (profit / item.metaSpend) : 0; // ROI as ratio (e.g. 2.5x)
+
+        finalData.push(item);
+      });
+
+      setData(finalData.sort((a, b) => b.revenue - a.revenue));
+
+    } catch (error) {
+      console.error("Error fetching product master:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const totals = useMemo(() => {
-    return productMasterData.reduce(
+    return data.reduce(
       (acc, row) => ({
         metaSpend: acc.metaSpend + row.metaSpend,
         metaLeads: acc.metaLeads + row.metaLeads,
@@ -74,7 +128,15 @@ export default function ProductMasterPage() {
       }),
       { metaSpend: 0, metaLeads: 0, sentLeads: 0, tlLeads: 0, revenue: 0 }
     );
-  }, [productMasterData]);
+  }, [data]);
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Product Master" subtitle="The 3-Layer Matrix - Single Source of Truth">
+        <div className="p-10 text-center text-muted-foreground">Loading Master Data...</div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout title="Product Master" subtitle="The 3-Layer Matrix - Single Source of Truth">
@@ -111,7 +173,7 @@ export default function ProductMasterPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {productMasterData.length === 0 ? (
+              {data.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     No data found for selected filter
@@ -119,7 +181,7 @@ export default function ProductMasterPage() {
                 </TableRow>
               ) : (
                 <>
-                  {productMasterData.map((row) => (
+                  {data.map((row) => (
                     <TableRow key={row.product}>
                       <TableCell>
                         <div className="flex flex-col">
@@ -163,9 +225,9 @@ export default function ProductMasterPage() {
                       </TableCell>
                       <TableCell className="text-center font-mono text-sm font-bold bg-lead-tl/5">
                         <span className={
-                          row.roi < 1 ? 'text-status-kill' : 
-                          row.roi >= 3 ? 'text-status-scale' : 
-                          'text-status-hold'
+                          row.roi < 1 ? 'text-status-kill' :
+                            row.roi >= 3 ? 'text-status-scale' :
+                              'text-status-hold'
                         }>
                           {row.roi.toFixed(2)}x
                         </span>

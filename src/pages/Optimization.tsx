@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Beaker, Zap, TrendingUp, AlertTriangle, Check, X, Lightbulb, Target } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useFilter } from '@/contexts/FilterContext';
+import { ProductSetting } from '@/types';
+import { subDays, format } from 'date-fns';
 
 interface OptimizationSuggestion {
   id: string;
@@ -14,51 +18,186 @@ interface OptimizationSuggestion {
   campaign?: string;
 }
 
-const mockSuggestions: OptimizationSuggestion[] = [
-  {
-    id: '1',
-    type: 'scale',
-    title: 'Increase Budget on "LIFE-SENIOR-MORRADOK"',
-    description: 'This campaign has stable CPL for 3 consecutive days and is below target. Recommend scaling budget by 20%.',
-    impact: 'high',
-    campaign: 'LIFE-SENIOR-MORRADOK'
-  },
-  {
-    id: '2',
-    type: 'pause',
-    title: 'Pause "Life_Static_Banner_old" Creative',
-    description: 'Creative fatigue detected. Frequency is 4.2 and CTR dropped below 1%. Consider refreshing or pausing.',
-    impact: 'high',
-    campaign: 'LIFE-PROTECT-FAMILY'
-  },
-  {
-    id: '3',
-    type: 'adjust',
-    title: 'Narrow Audience on "HEALTH-PLUS-PREMIUM"',
-    description: 'High CPL detected (฿291). Consider removing "Insurance" interest which is underperforming.',
-    impact: 'medium',
-    campaign: 'HEALTH-PLUS-PREMIUM'
-  },
-  {
-    id: '4',
-    type: 'creative',
-    title: 'Test Video Format for Saving Products',
-    description: 'Video creatives show 25% lower CPL compared to static images for saving products. Consider creating more video content.',
-    impact: 'medium'
-  },
-  {
-    id: '5',
-    type: 'scale',
-    title: 'Increase Budget on "Luxury Vehicle" Interest',
-    description: 'This targeting has the lowest CPL (฿145) across all interests. Recommend reallocating budget from underperformers.',
-    impact: 'high'
-  }
-];
-
 export default function OptimizationPage() {
-  const [suggestions, setSuggestions] = useState(mockSuggestions);
+  const { dateRange } = useFilter();
+  const [suggestions, setSuggestions] = useState<OptimizationSuggestion[]>([]);
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    generateSuggestions();
+  }, [dateRange]);
+
+  const generateSuggestions = async () => {
+    try {
+      setLoading(true);
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
+
+      // Fetch necessary data
+      const [settingsRes, adsRes, leadsRes] = await Promise.all([
+        supabase.from('product_settings').select('*'),
+        supabase.from('ad_performance_daily')
+          .select('product_code, ad_id, ad_name, spend, meta_leads, impressions, clicks, date')
+          .gte('date', fromDate)
+          .lte('date', toDate),
+        supabase.from('leads_sent_daily')
+          .select('product_code, sent_all_amount')
+          .gte('report_date', fromDate)
+          .lte('report_date', toDate)
+      ]);
+
+      const settings = settingsRes.data || [];
+      const ads = adsRes.data || [];
+      const leads = leadsRes.data || [];
+
+      const newSuggestions: OptimizationSuggestion[] = [];
+
+      // 1. Analyze CPL Performance by Product
+      const productMap = new Map<string, {
+        spend: number;
+        metaLeads: number;
+        sentLeads: number;
+        targetCpl: number;
+      }>();
+
+      settings.forEach((s: ProductSetting) => {
+        productMap.set(s.product_code, {
+          spend: 0,
+          metaLeads: 0,
+          sentLeads: 0,
+          targetCpl: s.target_cpl || 200
+        });
+      });
+
+      ads.forEach((row: any) => {
+        const item = productMap.get(row.product_code);
+        if (item) {
+          item.spend += (row.spend || 0);
+          item.metaLeads += (row.meta_leads || 0);
+        }
+      });
+
+      leads.forEach((row: any) => {
+        const item = productMap.get(row.product_code);
+        if (item) {
+          item.sentLeads += (row.sent_all_amount || 0);
+        }
+      });
+
+      // Generate product-level suggestions
+      productMap.forEach((data, productCode) => {
+        const cpl = data.metaLeads > 0 ? data.spend / data.metaLeads : 0;
+        const ratio = cpl / data.targetCpl;
+
+        // Scale suggestion
+        if (ratio <= 0.8 && data.metaLeads > 10) {
+          newSuggestions.push({
+            id: `scale-${productCode}`,
+            type: 'scale',
+            title: `Increase Budget on "${productCode}"`,
+            description: `CPL is ${Math.round(cpl)}฿ (${Math.round((1 - ratio) * 100)}% below target). Campaign is performing well with ${data.metaLeads} leads. Recommend scaling budget by 20%.`,
+            impact: 'high',
+            campaign: productCode
+          });
+        }
+
+        // Pause/Review suggestion
+        if (ratio > 1.5 && data.spend > 1000) {
+          newSuggestions.push({
+            id: `pause-${productCode}`,
+            type: 'pause',
+            title: `Review "${productCode}" Performance`,
+            description: `CPL is ${Math.round(cpl)}฿ (${Math.round((ratio - 1) * 100)}% above target). Spent ${Math.round(data.spend)}฿ with high cost. Consider pausing or adjusting targeting.`,
+            impact: 'high',
+            campaign: productCode
+          });
+        }
+
+        // Conversion optimization
+        const convRate = data.metaLeads > 0 ? (data.sentLeads / data.metaLeads) * 100 : 0;
+        if (convRate < 50 && data.metaLeads > 20) {
+          newSuggestions.push({
+            id: `adjust-${productCode}`,
+            type: 'adjust',
+            title: `Improve Lead Quality for "${productCode}"`,
+            description: `Only ${Math.round(convRate)}% of Meta leads are being sent. Screening rate is low. Consider adjusting targeting to improve lead quality.`,
+            impact: 'medium',
+            campaign: productCode
+          });
+        }
+      });
+
+      // 2. Analyze Creative Performance
+      const adMap = new Map<string, {
+        name: string;
+        spend: number;
+        impressions: number;
+        clicks: number;
+        leads: number;
+        productCode: string;
+      }>();
+
+      ads.forEach((row: any) => {
+        const key = row.ad_id || row.ad_name;
+        if (!adMap.has(key)) {
+          adMap.set(key, {
+            name: row.ad_name || 'Unknown',
+            spend: 0,
+            impressions: 0,
+            clicks: 0,
+            leads: 0,
+            productCode: row.product_code
+          });
+        }
+        const ad = adMap.get(key)!;
+        ad.spend += (row.spend || 0);
+        ad.impressions += (row.impressions || 0);
+        ad.clicks += (row.clicks || 0);
+        ad.leads += (row.meta_leads || 0);
+      });
+
+      // Detect creative fatigue
+      adMap.forEach((ad, adId) => {
+        const ctr = ad.impressions > 0 ? (ad.clicks / ad.impressions) * 100 : 0;
+        const frequency = ad.impressions > 0 && ad.clicks > 0 ? ad.impressions / ad.clicks : 0;
+
+        if (ctr < 1 && frequency > 4 && ad.spend > 500) {
+          newSuggestions.push({
+            id: `creative-${adId}`,
+            type: 'creative',
+            title: `Creative Fatigue Detected: "${ad.name}"`,
+            description: `CTR dropped to ${ctr.toFixed(2)}% with frequency of ${frequency.toFixed(1)}. Consider refreshing creative or pausing.`,
+            impact: 'high',
+            campaign: ad.productCode
+          });
+        }
+      });
+
+      // 3. General Creative Suggestions (if we have data)
+      if (ads.length > 0) {
+        const totalImpressions = ads.reduce((sum: number, a: any) => sum + (a.impressions || 0), 0);
+        if (totalImpressions > 10000) {
+          newSuggestions.push({
+            id: 'creative-general',
+            type: 'creative',
+            title: 'Test New Creative Formats',
+            description: 'Based on current performance, consider testing video formats or carousel ads to improve engagement and reduce creative fatigue.',
+            impact: 'medium'
+          });
+        }
+      }
+
+      setSuggestions(newSuggestions);
+
+    } catch (error) {
+      console.error('Error generating suggestions:', error);
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -97,6 +236,16 @@ export default function OptimizationPage() {
   const visibleSuggestions = suggestions.filter(
     s => !appliedIds.includes(s.id) && !dismissedIds.includes(s.id)
   );
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Optimization Lab" subtitle="AI-Powered Suggestions & Rule-Based Alerts">
+        <div className="p-10 text-center text-muted-foreground">
+          Analyzing campaign performance...
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Optimization Lab" subtitle="AI-Powered Suggestions & Rule-Based Alerts">
@@ -155,7 +304,7 @@ export default function OptimizationPage() {
                 <div className="p-3 bg-secondary rounded-lg shrink-0">
                   {getTypeIcon(suggestion.type)}
                 </div>
-                
+
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-4 mb-2">
@@ -174,16 +323,16 @@ export default function OptimizationPage() {
 
                 {/* Actions */}
                 <div className="flex gap-2 shrink-0">
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     onClick={() => handleApply(suggestion.id)}
                     className="gap-1"
                   >
                     <Check className="w-4 h-4" />
                     Apply
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => handleDismiss(suggestion.id)}
                     className="gap-1"

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { ProductDropoffData } from '@/types';
@@ -6,42 +6,113 @@ import { formatNumber, formatPercent } from '@/lib/campaignParser';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { ArrowDown, TrendingDown } from 'lucide-react';
 import { useFilter } from '@/contexts/FilterContext';
-
-// Mock data
-const allProductDropoff: ProductDropoffData[] = [
-  { product: 'LIFE-SENIOR-MORRADOK', metaLeads: 2450, sentLeads: 1650, tlLeads: 1200, screeningRate: 67.3, conversionRate: 72.7 },
-  { product: 'SAVING-RETIRE-GOLD', metaLeads: 1820, sentLeads: 1420, tlLeads: 980, screeningRate: 78.0, conversionRate: 69.0 },
-  { product: 'HEALTH-PLUS-PREMIUM', metaLeads: 1600, sentLeads: 1100, tlLeads: 650, screeningRate: 68.8, conversionRate: 59.1 },
-  { product: 'LIFE-PROTECT-FAMILY', metaLeads: 1450, sentLeads: 1180, tlLeads: 920, screeningRate: 81.4, conversionRate: 78.0 },
-  { product: 'SAVING-EDU-FUTURE', metaLeads: 680, sentLeads: 520, tlLeads: 340, screeningRate: 76.5, conversionRate: 65.4 },
-  { product: 'HEALTH-CRITICAL-CARE', metaLeads: 480, sentLeads: 370, tlLeads: 220, screeningRate: 77.1, conversionRate: 59.5 },
-];
+import { supabase } from '@/integrations/supabase/client';
 
 export default function LeadsAnalysisPage() {
-  const { product } = useFilter();
+  const { product, dateRange } = useFilter();
+  const [data, setData] = useState<ProductDropoffData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Filter data based on selected product
-  const productDropoff = useMemo(() => {
-    if (product === 'all') return allProductDropoff;
-    return allProductDropoff.filter(row => row.product === product);
-  }, [product]);
+  useEffect(() => {
+    fetchLeadsAnalysis();
+  }, [product, dateRange]);
+
+  const fetchLeadsAnalysis = async () => {
+    try {
+      setLoading(true);
+      const fromDate = dateRange.from.toISOString().split('T')[0];
+      const toDate = dateRange.to.toISOString().split('T')[0];
+
+      // We need similar aggregation as ProductMaster but focused on funnel
+      // 1. Fetch Ads (Meta Leads)
+      const { data: ads } = await supabase
+        .from('ad_performance_daily')
+        .select('product_code, meta_leads')
+        .gte('date', fromDate)
+        .lte('date', toDate);
+
+      // 2. Fetch Leads (Sent & TL)
+      const { data: leads } = await supabase
+        .from('leads_sent_daily')
+        .select('product_code, sent_all_amount, confirmed_amount')
+        .gte('report_date', fromDate)
+        .lte('report_date', toDate);
+
+      // 3. Since we want breakdown by product, use a map.
+      // We'll collect all products found in both sources.
+      const map = new Map<string, ProductDropoffData>();
+
+      const getOrCreate = (code: string) => {
+        if (!map.has(code)) {
+          map.set(code, {
+            product: code,
+            metaLeads: 0,
+            sentLeads: 0,
+            tlLeads: 0,
+            screeningRate: 0,
+            conversionRate: 0
+          });
+        }
+        return map.get(code)!;
+      };
+
+      ads?.forEach((row: any) => {
+        const item = getOrCreate(row.product_code);
+        item.metaLeads += (row.meta_leads || 0);
+      });
+
+      leads?.forEach((row: any) => {
+        const item = getOrCreate(row.product_code);
+        item.sentLeads += (row.sent_all_amount || 0);
+        item.tlLeads += (row.confirmed_amount || 0);
+      });
+
+      const finalData: ProductDropoffData[] = [];
+      map.forEach(item => {
+        if (product !== 'all' && item.product !== product) return;
+
+        item.screeningRate = item.metaLeads > 0 ? (item.sentLeads / item.metaLeads) * 100 : 0;
+        item.conversionRate = item.sentLeads > 0 ? (item.tlLeads / item.sentLeads) * 100 : 0;
+
+        // Only include if there is some activity
+        if (item.metaLeads > 0 || item.sentLeads > 0) {
+          finalData.push(item);
+        }
+      });
+
+      setData(finalData.sort((a, b) => b.metaLeads - a.metaLeads));
+
+    } catch (error) {
+      console.error("Error fetching leads analysis:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Calculate funnel data from filtered products
   const funnelData = useMemo(() => {
-    const metaLeads = productDropoff.reduce((sum, row) => sum + row.metaLeads, 0);
-    const sentLeads = productDropoff.reduce((sum, row) => sum + row.sentLeads, 0);
-    const tlLeads = productDropoff.reduce((sum, row) => sum + row.tlLeads, 0);
+    const metaLeads = data.reduce((sum, row) => sum + row.metaLeads, 0);
+    const sentLeads = data.reduce((sum, row) => sum + row.sentLeads, 0);
+    const tlLeads = data.reduce((sum, row) => sum + row.tlLeads, 0);
     const metaToSentDropoff = metaLeads > 0 ? ((metaLeads - sentLeads) / metaLeads) * 100 : 0;
     const sentToTlDropoff = sentLeads > 0 ? ((sentLeads - tlLeads) / sentLeads) * 100 : 0;
 
     return { metaLeads, sentLeads, tlLeads, metaToSentDropoff, sentToTlDropoff };
-  }, [productDropoff]);
+  }, [data]);
 
   const funnelSteps = [
     { name: 'Meta Leads', value: funnelData.metaLeads, color: 'hsl(var(--lead-meta))', label: 'Raw Interest' },
     { name: 'Sent Leads', value: funnelData.sentLeads, color: 'hsl(var(--lead-sent))', label: 'Qualified' },
     { name: 'TL Leads', value: funnelData.tlLeads, color: 'hsl(var(--lead-tl))', label: 'Confirmed Revenue' },
   ];
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Leads Analysis" subtitle="The Funnel of Truth - Data Integrity View">
+        <div className="p-10 text-center text-muted-foreground">Loading Analysis...</div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Leads Analysis" subtitle="The Funnel of Truth - Data Integrity View">
@@ -52,15 +123,15 @@ export default function LeadsAnalysisPage() {
             Lead Conversion Funnel
             {product !== 'all' && <span className="ml-2 text-sm font-normal text-primary">({product})</span>}
           </h2>
-          
+
           <div className="space-y-4">
             {funnelSteps.map((step, index) => {
-              const widthPercent = funnelData.metaLeads > 0 ? (step.value / funnelData.metaLeads) * 100 : 0;
-              const dropoff = index === 0 ? null : 
+              const widthPercent = funnelData.metaLeads > 0 ? (step.value / funnelData.metaLeads) * 100 : 100;
+              const dropoff = index === 0 ? null :
                 index === 1 ? funnelData.metaToSentDropoff : funnelData.sentToTlDropoff;
 
               const dropoffLabel = index === 1 ? 'Screening Process' : 'Customer Unreachable';
-              
+
               return (
                 <div key={step.name}>
                   {dropoff !== null && (
@@ -73,9 +144,9 @@ export default function LeadsAnalysisPage() {
                     </div>
                   )}
                   <div className="relative">
-                    <div 
+                    <div
                       className="h-16 flex items-center justify-between px-4 transition-all"
-                      style={{ 
+                      style={{
                         width: `${Math.max(widthPercent, 10)}%`,
                         backgroundColor: step.color,
                         marginLeft: `${(100 - Math.max(widthPercent, 10)) / 2}%`,
@@ -124,39 +195,39 @@ export default function LeadsAnalysisPage() {
             </div>
           </div>
 
-          {productDropoff.length === 0 ? (
+          {data.length === 0 ? (
             <div className="h-[300px] flex items-center justify-center text-muted-foreground">
               No data for selected filter
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart
-                data={productDropoff}
+                data={data}
                 layout="vertical"
                 margin={{ top: 0, right: 30, left: 100, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                <YAxis 
-                  type="category" 
-                  dataKey="product" 
+                <YAxis
+                  type="category"
+                  dataKey="product"
                   tick={{ fontSize: 11 }}
                   width={100}
                 />
                 <Tooltip
                   formatter={(value: number) => [`${value.toFixed(1)}%`, 'Screening Rate']}
-                  contentStyle={{ 
+                  contentStyle={{
                     backgroundColor: 'hsl(var(--card))',
                     border: '2px solid hsl(var(--foreground))',
                   }}
                 />
                 <Bar dataKey="screeningRate" radius={[0, 4, 4, 0]}>
-                  {productDropoff.map((entry, index) => (
-                    <Cell 
+                  {data.map((entry, index) => (
+                    <Cell
                       key={`cell-${index}`}
-                      fill={entry.screeningRate >= 75 ? 'hsl(var(--status-scale))' : 
-                            entry.screeningRate >= 65 ? 'hsl(var(--status-hold))' : 
-                            'hsl(var(--status-risk))'}
+                      fill={entry.screeningRate >= 75 ? 'hsl(var(--status-scale))' :
+                        entry.screeningRate >= 65 ? 'hsl(var(--status-hold))' :
+                          'hsl(var(--status-risk))'}
                     />
                   ))}
                 </Bar>
@@ -200,32 +271,30 @@ export default function LeadsAnalysisPage() {
               </tr>
             </thead>
             <tbody>
-              {productDropoff.length === 0 ? (
+              {data.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-muted-foreground">
                     No data for selected filter
                   </td>
                 </tr>
               ) : (
-                productDropoff.map((row) => (
+                data.map((row) => (
                   <tr key={row.product} className="border-b border-border">
                     <td className="p-3 font-medium">{row.product}</td>
                     <td className="p-3 text-right font-mono">{formatNumber(row.metaLeads)}</td>
                     <td className="p-3 text-right font-mono font-bold">{formatNumber(row.sentLeads)}</td>
                     <td className="p-3 text-right font-mono">{formatNumber(row.tlLeads)}</td>
                     <td className="p-3 text-right">
-                      <span className={`font-mono font-bold ${
-                        row.screeningRate >= 75 ? 'text-status-scale' :
-                        row.screeningRate >= 65 ? 'text-status-hold' : 'text-status-risk'
-                      }`}>
+                      <span className={`font-mono font-bold ${row.screeningRate >= 75 ? 'text-status-scale' :
+                          row.screeningRate >= 65 ? 'text-status-hold' : 'text-status-risk'
+                        }`}>
                         {formatPercent(row.screeningRate)}
                       </span>
                     </td>
                     <td className="p-3 text-right">
-                      <span className={`font-mono font-bold ${
-                        row.conversionRate >= 70 ? 'text-status-scale' :
-                        row.conversionRate >= 60 ? 'text-status-hold' : 'text-status-risk'
-                      }`}>
+                      <span className={`font-mono font-bold ${row.conversionRate >= 70 ? 'text-status-scale' :
+                          row.conversionRate >= 60 ? 'text-status-hold' : 'text-status-risk'
+                        }`}>
                         {formatPercent(row.conversionRate)}
                       </span>
                     </td>

@@ -37,6 +37,9 @@ export default function DataManagement() {
   const [geminiKey, setGeminiKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [hasStoredKeys, setHasStoredKeys] = useState(false);
+  const [activeConnections, setActiveConnections] = useState(0);
+  const [pendingConnections, setPendingConnections] = useState(0);
+  const [totalRecords, setTotalRecords] = useState(0);
 
   useEffect(() => {
     const isAuth = localStorage.getItem('isAdminAuthenticated');
@@ -44,6 +47,7 @@ export default function DataManagement() {
       navigate('/admin-login');
     }
     fetchExistingKeys();
+    fetchConnectionStats();
   }, [navigate]);
 
   const fetchExistingKeys = async () => {
@@ -58,6 +62,30 @@ export default function DataManagement() {
         if (row.provider === 'groq') setGroqKey(row.access_token);
         if (row.provider === 'gemini') setGeminiKey(row.access_token);
       });
+    }
+  };
+
+  const fetchConnectionStats = async () => {
+    try {
+      // Count active connections from config_tokens
+      const { data: tokens, count: tokenCount } = await supabase
+        .from('config_tokens')
+        .select('*', { count: 'exact', head: false });
+
+      setActiveConnections(tokenCount || 0);
+      setPendingConnections(0); // Can be enhanced later
+
+      // Calculate total records from main tables
+      const [adsRes, leadsRes, audienceRes] = await Promise.all([
+        supabase.from('ad_performance_daily').select('*', { count: 'exact', head: true }),
+        supabase.from('leads_sent_daily').select('*', { count: 'exact', head: true }),
+        supabase.from('audience_breakdown_daily').select('*', { count: 'exact', head: true })
+      ]);
+
+      const total = (adsRes.count || 0) + (leadsRes.count || 0) + (audienceRes.count || 0);
+      setTotalRecords(total);
+    } catch (error) {
+      console.error('Error fetching connection stats:', error);
     }
   };
 
@@ -160,7 +188,7 @@ export default function DataManagement() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Active Connections</p>
-                <p className="text-2xl font-bold text-foreground">2</p>
+                <p className="text-2xl font-bold text-foreground">{activeConnections}</p>
               </div>
             </div>
           </Card>
@@ -171,7 +199,7 @@ export default function DataManagement() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pending Setup</p>
-                <p className="text-2xl font-bold text-foreground">1</p>
+                <p className="text-2xl font-bold text-foreground">{pendingConnections}</p>
               </div>
             </div>
           </Card>
@@ -182,7 +210,7 @@ export default function DataManagement() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Records</p>
-                <p className="text-2xl font-bold text-foreground">15,695</p>
+                <p className="text-2xl font-bold text-foreground">{totalRecords.toLocaleString()}</p>
               </div>
             </div>
           </Card>
