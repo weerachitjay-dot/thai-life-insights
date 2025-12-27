@@ -40,7 +40,6 @@ import { cn } from '@/lib/utils';
 interface ProductCycle {
   id: string;
   product_code: string;
-  cycle_name: string;
   delivery_start: string;
   delivery_end: string;
   target_leads: number;
@@ -57,7 +56,6 @@ export function ProductCycleConfig() {
   const [cycleToDelete, setCycleToDelete] = useState<ProductCycle | null>(null);
   const [newCycle, setNewCycle] = useState({
     product_code: '',
-    cycle_name: '',
     delivery_start: new Date(),
     delivery_end: new Date(),
     target_leads: 0
@@ -113,10 +111,7 @@ export function ProductCycleConfig() {
     try {
       const { error } = await supabase
         .from('product_cycles')
-        .update({
-          ...edits,
-          updated_at: new Date().toISOString()
-        })
+        .update(edits)
         .eq('id', cycleId);
 
       if (error) throw error;
@@ -145,10 +140,10 @@ export function ProductCycleConfig() {
   };
 
   const handleAddNew = async () => {
-    if (!newCycle.product_code || !newCycle.cycle_name) {
+    if (!newCycle.product_code) {
       toast({
         title: "Validation Error",
-        description: "Product code and cycle name are required.",
+        description: "Product code is required.",
         variant: "destructive",
       });
       return;
@@ -160,7 +155,6 @@ export function ProductCycleConfig() {
         .from('product_cycles')
         .insert({
           product_code: newCycle.product_code,
-          cycle_name: newCycle.cycle_name,
           delivery_start: format(newCycle.delivery_start, 'yyyy-MM-dd'),
           delivery_end: format(newCycle.delivery_end, 'yyyy-MM-dd'),
           target_leads: newCycle.target_leads,
@@ -177,7 +171,6 @@ export function ProductCycleConfig() {
       setShowAddDialog(false);
       setNewCycle({
         product_code: '',
-        cycle_name: '',
         delivery_start: new Date(),
         delivery_end: new Date(),
         target_leads: 0
@@ -214,7 +207,7 @@ export function ProductCycleConfig() {
 
       toast({
         title: "Deleted",
-        description: `Cycle "${cycleToDelete.cycle_name}" deleted successfully.`,
+        description: `Cycle for ${cycleToDelete.product_code} deleted successfully.`,
       });
 
       setDeleteDialogOpen(false);
@@ -231,8 +224,6 @@ export function ProductCycleConfig() {
       setSaving(false);
     }
   };
-
-  const hasEdits = Object.keys(editedCycles).length > 0;
 
   return (
     <>
@@ -263,8 +254,7 @@ export function ProductCycleConfig() {
           <Table>
             <TableHeader>
               <TableRow className="bg-secondary">
-                <TableHead className="font-bold">Product Name</TableHead>
-                <TableHead className="font-bold">Cycle Name</TableHead>
+                <TableHead className="font-bold">Product Code</TableHead>
                 <TableHead className="font-bold">Delivery Start</TableHead>
                 <TableHead className="font-bold">Delivery End</TableHead>
                 <TableHead className="font-bold text-right">Target (Leads)</TableHead>
@@ -274,13 +264,13 @@ export function ProductCycleConfig() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     Loading cycles...
                   </TableCell>
                 </TableRow>
               ) : cycles.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     No active product cycles found
                   </TableCell>
                 </TableRow>
@@ -288,13 +278,6 @@ export function ProductCycleConfig() {
                 cycles.map((cycle) => (
                   <TableRow key={cycle.id}>
                     <TableCell className="font-medium">{cycle.product_code}</TableCell>
-                    <TableCell>
-                      <Input
-                        value={getEditedValue(cycle, 'cycle_name') as string}
-                        onChange={(e) => handleFieldChange(cycle.id, 'cycle_name', e.target.value)}
-                        className="w-28 h-8"
-                      />
-                    </TableCell>
                     <TableCell>
                       <DatePickerCell
                         value={getEditedValue(cycle, 'delivery_start') as string}
@@ -365,15 +348,6 @@ export function ProductCycleConfig() {
                 placeholder="e.g., LIFE-SENIOR-MORRADOK"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="cycle-name">Cycle Name *</Label>
-              <Input
-                id="cycle-name"
-                value={newCycle.cycle_name}
-                onChange={(e) => setNewCycle({ ...newCycle, cycle_name: e.target.value })}
-                placeholder="e.g., December 2024"
-              />
-            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Delivery Start</Label>
@@ -441,7 +415,7 @@ export function ProductCycleConfig() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the cycle "{cycleToDelete?.cycle_name}" for {cycleToDelete?.product_code}.
+              This will permanently delete the cycle for {cycleToDelete?.product_code}.
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
