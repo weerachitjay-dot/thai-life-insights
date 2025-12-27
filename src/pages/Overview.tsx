@@ -24,7 +24,7 @@ interface ProductCycle {
   product_code: string;
   delivery_start: string;
   delivery_end: string;
-  target_partner: number;
+  target_leads: number;
 }
 
 // Effective Operational Days projection algorithm
@@ -76,7 +76,7 @@ export default function OverviewPage() {
       // 1. Fetch Active Product Cycles (Target)
       const { data: cycles, error: cycleError } = await supabase
         .from('product_cycles')
-        .select('id, product_code, delivery_start, delivery_end, target_partner')
+        .select('id, product_code, delivery_start, delivery_end, target_leads')
         .eq('is_active', true);
 
       if (cycleError) throw cycleError;
@@ -93,7 +93,7 @@ export default function OverviewPage() {
 
       // Initialize with active cycles
       cycles?.forEach((c: ProductCycle) => {
-        const businessTarget = c.target_partner || 0;
+        const businessTarget = c.target_leads || 0;
         const expectedConvRate = 0.70; // 70% default conversion rate
         const targetSent = Math.round(businessTarget / expectedConvRate);
 

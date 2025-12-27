@@ -47,7 +47,7 @@ export type Database = {
           id: string
           is_active: boolean
           product_code: string
-          target_partner: number
+          target_leads: number
           updated_at: string
         }
         Insert: {
@@ -58,7 +58,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           product_code: string
-          target_partner?: number
+          target_leads?: number
           updated_at?: string
         }
         Update: {
@@ -69,7 +69,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           product_code?: string
-          target_partner?: number
+          target_leads?: number
           updated_at?: string
         }
         Relationships: []

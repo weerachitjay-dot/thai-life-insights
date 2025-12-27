@@ -20,11 +20,11 @@ import { cn } from '@/lib/utils';
 
 interface ProductCycle {
   id: string;
-  product_name: string;
+  product_code: string;
   cycle_name: string;
   delivery_start: string;
   delivery_end: string;
-  target_partner: number;
+  target_leads: number;
   is_active: boolean;
 }
 
@@ -45,7 +45,7 @@ export function ProductCycleConfig() {
         .from('product_cycles')
         .select('*')
         .eq('is_active', true)
-        .order('product_name');
+        .order('product_code');
 
       if (error) throw error;
       setCycles(data || []);
@@ -189,7 +189,7 @@ export function ProductCycleConfig() {
               <TableHead className="font-bold">Cycle Name</TableHead>
               <TableHead className="font-bold">Delivery Start</TableHead>
               <TableHead className="font-bold">Delivery End</TableHead>
-              <TableHead className="font-bold text-right">Target (Partner)</TableHead>
+              <TableHead className="font-bold text-right">Target (Leads)</TableHead>
               <TableHead className="font-bold text-center">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -209,7 +209,7 @@ export function ProductCycleConfig() {
             ) : (
               cycles.map((cycle) => (
                 <TableRow key={cycle.id}>
-                  <TableCell className="font-medium">{cycle.product_name}</TableCell>
+                  <TableCell className="font-medium">{cycle.product_code}</TableCell>
                   <TableCell>
                     <Input
                       value={getEditedValue(cycle, 'cycle_name') as string}
@@ -232,8 +232,8 @@ export function ProductCycleConfig() {
                   <TableCell className="text-right">
                     <Input
                       type="number"
-                      value={getEditedValue(cycle, 'target_partner') as number}
-                      onChange={(e) => handleFieldChange(cycle.id, 'target_partner', parseInt(e.target.value) || 0)}
+                      value={getEditedValue(cycle, 'target_leads') as number}
+                      onChange={(e) => handleFieldChange(cycle.id, 'target_leads', parseInt(e.target.value) || 0)}
                       className="w-24 h-8 text-right"
                     />
                   </TableCell>

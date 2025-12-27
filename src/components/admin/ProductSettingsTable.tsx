@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +10,7 @@ import { Pencil, Save, X, DollarSign, User, Target } from 'lucide-react';
 
 export function ProductSettingsTable() {
     const [products, setProducts] = useState<ProductSetting[]>([]);
-    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editingCode, setEditingCode] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<ProductSetting>>({});
     const [loading, setLoading] = useState(true);
 
@@ -25,7 +24,7 @@ export function ProductSettingsTable() {
             const { data, error } = await supabase
                 .from('product_settings')
                 .select('*')
-                .order('id'); // Ensure stable order
+                .order('product_code');
 
             if (error) throw error;
             setProducts(data || []);
@@ -42,16 +41,16 @@ export function ProductSettingsTable() {
     };
 
     const handleEdit = (product: ProductSetting) => {
-        setEditingId(product.id);
+        setEditingCode(product.product_code);
         setEditForm(product);
     };
 
     const handleCancel = () => {
-        setEditingId(null);
+        setEditingCode(null);
         setEditForm({});
     };
 
-    const handleSave = async (id: number) => {
+    const handleSave = async (code: string) => {
         try {
             const { error } = await supabase
                 .from('product_settings')
@@ -60,7 +59,7 @@ export function ProductSettingsTable() {
                     owner_name: editForm.owner_name,
                     target_cpl: editForm.target_cpl
                 })
-                .eq('id', id);
+                .eq('product_code', code);
 
             if (error) throw error;
 
@@ -70,8 +69,8 @@ export function ProductSettingsTable() {
             });
 
             // Update local state
-            setProducts(products.map(p => p.id === id ? { ...p, ...editForm } as ProductSetting : p));
-            setEditingId(null);
+            setProducts(products.map(p => p.product_code === code ? { ...p, ...editForm } as ProductSetting : p));
+            setEditingCode(null);
         } catch (error) {
             console.error('Error updating product settings:', error);
             toast({
@@ -108,11 +107,11 @@ export function ProductSettingsTable() {
                 </TableHeader>
                 <TableBody>
                     {products.map((product) => (
-                        <TableRow key={product.id}>
+                        <TableRow key={product.product_code}>
                             <TableCell className="font-medium">{product.product_code}</TableCell>
 
                             <TableCell>
-                                {editingId === product.id ? (
+                                {editingCode === product.product_code ? (
                                     <Input
                                         type="number"
                                         value={editForm.sell_price || 0}
@@ -125,7 +124,7 @@ export function ProductSettingsTable() {
                             </TableCell>
 
                             <TableCell>
-                                {editingId === product.id ? (
+                                {editingCode === product.product_code ? (
                                     <Input
                                         type="number"
                                         value={editForm.target_cpl || 0}
@@ -138,7 +137,7 @@ export function ProductSettingsTable() {
                             </TableCell>
 
                             <TableCell>
-                                {editingId === product.id ? (
+                                {editingCode === product.product_code ? (
                                     <Input
                                         value={editForm.owner_name || ''}
                                         onChange={(e) => setEditForm({ ...editForm, owner_name: e.target.value })}
@@ -153,9 +152,9 @@ export function ProductSettingsTable() {
                             </TableCell>
 
                             <TableCell className="text-right">
-                                {editingId === product.id ? (
+                                {editingCode === product.product_code ? (
                                     <div className="flex justify-end gap-2">
-                                        <Button variant="ghost" size="icon" onClick={() => handleSave(product.id)}>
+                                        <Button variant="ghost" size="icon" onClick={() => handleSave(product.product_code)}>
                                             <Save className="w-4 h-4 text-green-600" />
                                         </Button>
                                         <Button variant="ghost" size="icon" onClick={handleCancel}>

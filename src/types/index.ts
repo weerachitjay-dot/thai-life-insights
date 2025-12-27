@@ -137,7 +137,6 @@ export interface ProductMatrixRow {
 }
 
 export interface ProductSetting {
-  id: number;
   product_code: string;
   sell_price: number;
   owner_name: string;
